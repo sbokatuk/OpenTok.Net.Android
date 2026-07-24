@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<metadata>
+  <!--
+    StatsReport declares a nested class named Value — class-parse binds it as
+    Com.Vonage.Webrtc.StatsReport.Value, which collides with C#'s rule that a nested type cannot
+    share its enclosing type's name (CS0542). Renamed rather than removed: OpenTok's stats surface
+    hands these back to a consumer reading connection/media stats.
+  -->
+  <attr path="/api/package[@name='com.vonage.webrtc']/class[@name='StatsReport.Value']" name="managedName">StatsReportValue</attr>
+
+  <!--
+    WrappedNativeVideoEncoder implements IVideoEncoder but does not itself declare
+    getScalingSettings() (its Java class inherits it from elsewhere in a way class-parse cannot see
+    through), so the generator emits an interface implementation with no member behind it (CS0535).
+    Turning off property-getter synthesis for this one accessor leaves the underlying method
+    ungenerated the same way the interface member is — there is no working call surface to
+    preserve.
+  -->
+  <attr path="/api/package[@name='com.vonage.webrtc']/class[@name='WrappedNativeVideoEncoder']/method[@name='getScalingSettings' and count(parameter)=0]" name="propertyName"></attr>
+
+  <!--
+    VideoFrame.TextureBuffer declares getType(): Type — class-parse's default property-getter
+    synthesis would name it GetType(), colliding with object.GetType() with an incompatible return
+    type (CS0738). TextureBufferImpl is the concrete class that surfaces this; suppressing the
+    property synthesis leaves the plain GetType()-shaped method out rather than broken — the
+    interface still exposes the enum via its own member.
+  -->
+  <attr path="/api/package[@name='com.vonage.webrtc']/class[@name='TextureBufferImpl']/method[@name='getType' and count(parameter)=0]" name="propertyName"></attr>
+</metadata>

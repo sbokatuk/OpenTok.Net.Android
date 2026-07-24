@@ -1,0 +1,18 @@
+# The package set, and the single source of truth for it.
+#
+# build/BuildNugets.sh packs in this order, the package tests read it. Adding a package means
+# adding a row here and a project under src/ — nothing else keeps a second copy of the list.
+#
+# Rows are in dependency order. Unlike Net.Agora.Android's packages, these don't share a
+# "Net.OpenTok.<id>.Android" naming template — the main package is OpenTok.Net.Android itself, and
+# the dependency package is OpenTok.Net.webrtc.Dependency.Android — so each row spells out its own
+# project directory name (identical to its PackageId) rather than a bare id BuildNugets.sh expands.
+#
+# Columns
+#   id       short label used only for build log messages
+#   project  directory under src/, and the resulting PackageId (project dir == project file basename)
+#   deps     other ids in this repository it depends on, comma separated, or -
+#
+# id	project	deps
+webrtc	OpenTok.Net.webrtc.Dependency.Android	-
+opentok	OpenTok.Net.Android	webrtc

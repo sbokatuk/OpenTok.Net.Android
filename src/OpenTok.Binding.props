@@ -1,0 +1,207 @@
+<!--
+  Everything the Android binding projects in this repository have in common.
+
+  Imported explicitly by each .csproj rather than picked up as a Directory.Build.props, because it
+  reads properties the project sets (OpenTokArtifact, OpenTokGroupId, OpenTokNativeVersion,
+  OpenTokBindArtifact) and Directory.Build.props is imported before the project body, so it would
+  see none of them. That leaves each binding project as its identity, its description, its package
+  metadata and any extra Maven dependencies.
+
+  Unlike Net.Agora.Android's Agora.Binding.props, this file does not derive AssemblyName/PackageId
+  from a shared naming template: the two projects in this repository are OpenTok.Net.Android and
+  OpenTok.Net.webrtc.Dependency.Android, which don't share one — each .csproj sets its own identity
+  directly.
+-->
+<Project>
+
+  <PropertyGroup>
+    <!--
+      Each .NET SDK's Android workload ships reference packs for exactly two target frameworks:
+      the .NET 9 band covers net8.0-android + net9.0-android, the .NET 10 band covers
+      net9.0-android + net10.0-android. No single SDK can build all three, so
+      build/BuildNugets.sh packs twice and merges the results - see build/merge-packages.py.
+      OpenTokSdkBand selects which pass this build is.
+
+      The API level is pinned per target framework rather than left to the workload's default,
+      because it ends up in the lib/<tfm>/ folder name inside the package. A bare
+      'net8.0-android' resolves to whatever the installed workload currently defaults to, so a
+      workload update would change the packages' advertised target frameworks without a single
+      source edit.
+    -->
+    <OpenTokSdkBand Condition=" '$(OpenTokSdkBand)' == '' ">net9</OpenTokSdkBand>
+    <TargetFrameworks Condition=" '$(OpenTokSdkBand)' == 'net9' ">net8.0-android34.0;net9.0-android35.0</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(OpenTokSdkBand)' == 'net10' ">net10.0-android36.0</TargetFrameworks>
+    <!--
+      net8.0-android is past end of support, which the SDK reports as an error. It ships
+      deliberately: .NET 8 is still where a large share of MAUI apps are.
+    -->
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+
+    <!--
+      opentok-android-sdk's own manifest declares minSdkVersion 24 (Android 7.0) — a consuming
+      app's own minSdk cannot go lower than that, or the manifest merger fails with AAPT2's
+      uses-sdk:minSdkVersion error. Set here so both binding projects (and anything that reads
+      $(SupportedOSPlatformVersion) from this shared file) agree with the native artifact rather
+      than a generic Android floor.
+    -->
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+
+    <AndroidClassParser>class-parse</AndroidClassParser>
+    <AndroidCodegenTarget>XAJavaInterop1</AndroidCodegenTarget>
+
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!--
+      Generated-binding noise: CS1591 (no XML doc comments in the aar), CS0108/CS0114 (Java's
+      class hierarchy redeclares members the generator cannot express as overrides), BG8401
+      (managed-name collisions fixed case-by-case in Transforms/Metadata.xml), CS0618 (the aar's
+      own obsolete-but-still-public members), BG8400/BG8800 (fields and parameters typed with
+      classes removed in Transforms/Metadata.xml), CS0628 (opentok-android-sdk's
+      BaseVideoRenderer.Frame is a static nested class whose Java fields class-parse still binds as
+      "new protected" members even though the enclosing generated type is sealed — harmless, the
+      members are reachable exactly as C# already allows). BG8605/BG8606 (unresolved Java types)
+      and BG8801 (invalid parameter type) are deliberately left visible — they mean something else
+      was left out of the binding.
+    -->
+    <NoWarn>$(NoWarn);CS1591;CS0108;CS0114;CS0618;BG8401;BG8400;BG8800;CS0628</NoWarn>
+  </PropertyGroup>
+
+  <Target Name="ValidateOpenTokSdkBand" BeforeTargets="Build;Pack" Condition=" '$(TargetFrameworks)' == '' ">
+    <Error Text="OpenTokSdkBand must be 'net9' or 'net10', but was '$(OpenTokSdkBand)'." />
+  </Target>
+
+  <!--
+    The native artifact, resolved straight from Maven Central along with its .pom, via
+    AndroidMavenLibrary. Nothing is committed to this repository and there is no fetch script: it
+    downloads into ~/.cache/dotnet-android/MavenCacheDirectory, which CI restores from
+    actions/cache.
+
+    This also feeds Java dependency verification — the check that fails the build when the .aar
+    links against Java types no referenced package provides, turning a runtime
+    NoClassDefFoundError into a build error.
+  -->
+  <PropertyGroup>
+    <OpenTokBindArtifact Condition=" '$(OpenTokBindArtifact)' == '' ">true</OpenTokBindArtifact>
+
+    <!--
+      AndroidMavenLibrary arrived in the .NET Android SDK 35. The net8.0-android34.0 reference
+      pack has no Xamarin.Android.Bindings.Maven.targets at all, so the item is not merely
+      unsupported there — it is unknown, and MSBuild ignores unknown items in silence.
+
+      The failure that causes is the worst kind: the build succeeds, the package is produced, and
+      the binding assembly inside it is an empty few-KB shell with no .aar and no types. Nothing
+      in the log says so. Caught here by resolving the artifact a second way on net8, and in
+      tests/OpenTok.Net.Android.PackageTests by asserting every binding assembly is large enough
+      to contain a real binding.
+
+      net8 therefore gets no Java dependency verification. That is acceptable because net9 and
+      net10 bind exactly the same artifacts and do verify them, so a missing Java dependency still
+      fails the build — just in the other two passes.
+    -->
+    <OpenTokSupportsMavenLibrary>true</OpenTokSupportsMavenLibrary>
+    <!--
+      Compared literally rather than with TargetFramework.StartsWith: during the outer
+      cross-targeting build $(TargetFramework) is empty, and a property function on it aborts
+      evaluation of this file.
+    -->
+    <OpenTokSupportsMavenLibrary Condition=" '$(TargetFramework)' == 'net8.0-android34.0' ">false</OpenTokSupportsMavenLibrary>
+  </PropertyGroup>
+
+  <!-- Defaults for every @(OpenTokMavenArtifact), wherever a project declares one. -->
+  <ItemDefinitionGroup>
+    <OpenTokMavenArtifact>
+      <Repository>Central</Repository>
+      <Packaging>aar</Packaging>
+      <Bind>false</Bind>
+    </OpenTokMavenArtifact>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <OpenTokMavenArtifact Include="$(OpenTokGroupId):$(OpenTokArtifact)"
+                          Version="$(OpenTokNativeVersion)"
+                          Bind="$(OpenTokBindArtifact)"
+                          Packaging="aar" />
+  </ItemGroup>
+
+  <!--
+    Projected in a target, not in an ItemGroup here. This file is imported from the middle of each
+    .csproj, and MSBuild evaluates a project top to bottom, so an ItemGroup at this point would see
+    only the artifact declared above — silently missing any extra @(OpenTokMavenArtifact) rows a
+    project adds below its Import (e.g. the webrtc project's own flogger/guava rows).
+
+    Running after evaluation means the whole list is present regardless of where a project
+    declares its rows.
+  -->
+  <Target Name="ProjectOpenTokMavenArtifacts"
+          Condition=" '$(OpenTokSupportsMavenLibrary)' == 'true' "
+          BeforeTargets="_MavenRestore;_VerifyJavaDependencies;_CategorizeAndroidLibraries">
+    <ItemGroup>
+      <AndroidMavenLibrary Include="@(OpenTokMavenArtifact)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    The download path for net8.0-android34.0, where AndroidMavenLibrary does not exist. Both the
+    downloads and the @(AndroidLibrary) items live inside the target, and paths are made absolute
+    there: $(IntermediateOutputPath) is not final while this file is being evaluated — it is
+    imported from the project body, before the .NET SDK's targets have appended the configuration
+    and target framework to it — so an item declared at evaluation time would capture a path that
+    is not where the file ends up.
+  -->
+  <Target Name="DownloadOpenTokMavenArtifacts"
+          Condition=" '$(OpenTokSupportsMavenLibrary)' != 'true' "
+          BeforeTargets="_MavenRestore;_CategorizeAndroidLibraries">
+    <PropertyGroup>
+      <_OpenTokArtifactDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(IntermediateOutputPath)'))maven</_OpenTokArtifactDirectory>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <_OpenTokResolved Include="@(OpenTokMavenArtifact)">
+        <Group>$([System.Text.RegularExpressions.Regex]::Replace('%(Identity)', ':.*$', ''))</Group>
+        <ArtifactId>$([System.Text.RegularExpressions.Regex]::Replace('%(Identity)', '^.*:', ''))</ArtifactId>
+      </_OpenTokResolved>
+      <_OpenTokResolved>
+        <GroupPath>$([System.String]::Copy('%(Group)').Replace('.', '/'))</GroupPath>
+        <BaseUrl Condition=" '%(Repository)' == 'Google' ">https://dl.google.com/dl/android/maven2</BaseUrl>
+        <BaseUrl Condition=" '%(Repository)' != 'Google' ">https://repo1.maven.org/maven2</BaseUrl>
+      </_OpenTokResolved>
+      <_OpenTokResolved>
+        <MavenFileName>%(ArtifactId)-%(Version).%(Packaging)</MavenFileName>
+      </_OpenTokResolved>
+    </ItemGroup>
+
+    <MakeDir Directories="$(_OpenTokArtifactDirectory)" />
+
+    <DownloadFile
+        SourceUrl="%(_OpenTokResolved.BaseUrl)/%(_OpenTokResolved.GroupPath)/%(_OpenTokResolved.ArtifactId)/%(_OpenTokResolved.Version)/%(_OpenTokResolved.MavenFileName)"
+        DestinationFolder="$(_OpenTokArtifactDirectory)"
+        SkipUnchangedFiles="true"
+        Retries="3" />
+
+    <ItemGroup>
+      <AndroidLibrary Include="$(_OpenTokArtifactDirectory)/%(_OpenTokResolved.MavenFileName)"
+                       Bind="%(_OpenTokResolved.Bind)" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <TransformFile Include="Transforms/Metadata.xml" Condition="Exists('$(MSBuildProjectDirectory)/Transforms/Metadata.xml')" />
+    <TransformFile Include="Transforms/EnumFields.xml" Condition="Exists('$(MSBuildProjectDirectory)/Transforms/EnumFields.xml')" />
+    <TransformFile Include="Transforms/EnumMethods.xml" Condition="Exists('$(MSBuildProjectDirectory)/Transforms/EnumMethods.xml')" />
+  </ItemGroup>
+
+  <!-- Packaging -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageTags>$(PackageTags);OpenTok;Tokbox;Vonage;SDK;MAUI;Android;dotnet-android;Binding</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../build/icon.png" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../LICENSE" Pack="true" PackagePath="licenses/" Visible="false" />
+  </ItemGroup>
+
+</Project>

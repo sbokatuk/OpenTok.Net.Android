@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<metadata>
+  <!--
+    SubscriberKit implements two listener interfaces that each declare their own
+    onDisconnected(SubscriberKit) overload: StreamListener (stream-level) and SubscriberListener
+    (subscriber-level). class-parse's default managed name for both is "Disconnected", and its
+    default event-args class name for both is "DisconnectedEventArgs" — so SubscriberKit ends up
+    with the same member declared twice (CS0102) and the same event-args class defined twice
+    (CS0111). Both need a distinct managedName *and* a distinct argsType; renaming only one (the
+    minimum needed to stop the immediate collision) still leaves the other emitting the generic
+    "Disconnected"/"DisconnectedEventArgs" names, which is what actually collides with the one
+    that was renamed if a future SDK revision adds a third such overload — naming both explicitly
+    is what keeps this from being a moving target.
+  -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.StreamListener']/method[@name='onDisconnected' and count(parameter)=1 and parameter[1][@type='com.opentok.android.SubscriberKit']]" name="managedName">StreamDisconnected</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.StreamListener']/method[@name='onDisconnected' and count(parameter)=1 and parameter[1][@type='com.opentok.android.SubscriberKit']]" name="argsType">StreamListenerDisconnectedEventArgs</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.SubscriberListener']/method[@name='onDisconnected' and count(parameter)=1 and parameter[1][@type='com.opentok.android.SubscriberKit']]" name="managedName">SubscriberDisconnected</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.SubscriberListener']/method[@name='onDisconnected' and count(parameter)=1 and parameter[1][@type='com.opentok.android.SubscriberKit']]" name="argsType">SubscriberListenerDisconnectedEventArgs</attr>
+</metadata>

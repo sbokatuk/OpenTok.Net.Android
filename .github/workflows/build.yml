@@ -1,0 +1,312 @@
+name: build
+
+# Reusable pipeline: packs OpenTok.Net.Android and its OpenTok.Net.webrtc.Dependency.Android
+# dependency (each at its own version from Directory.Build.props, optionally suffixed for
+# prereleases), validates the result, builds the MAUI sample against the packed packages, and runs
+# the emulator smoke tests.
+
+on:
+  workflow_call:
+    inputs:
+      suffix:
+        description: >
+          Optional prerelease suffix (e.g. beta.12.34) appended to every package's own version.
+          OpenTok and webrtc sit on independent native version lines, so there is no single version
+          to stamp — each packs at its own pin from Directory.Build.props.
+        required: false
+        default: ''
+        type: string
+      e2e-target-frameworks:
+        description: >
+          Which target frameworks the emulator smoke tests run against, as a JSON array. Defaults
+          to the two extremes: net8, the oldest asset set and the one that resolves its .aar
+          through the DownloadFile fallback rather than AndroidMavenLibrary (see
+          src/OpenTok.Binding.props), and net10, whose assets are produced by the merge step in
+          BuildNugets.sh and so are the only ones that could be grafted in wrong. net9 sits between
+          them and comes out of the same pack pass as net8, so testing it too would buy little for
+          the runner minutes.
+        required: false
+        default: '["net8.0-android34.0", "net10.0-android36.0"]'
+        type: string
+      e2e-api-level:
+        description: Android API level the emulator smoke test boots.
+        required: false
+        default: 35
+        type: number
+      build-sample:
+        description: >
+          Whether to compile the MAUI sample against the packed packages. Defaults to true,
+          because it is a verification step and a new caller should get it. Releases turn it off:
+          by then the same commit has already been through it on the pull request, and it costs a
+          MAUI workload install between the packages being built and being published.
+        required: false
+        default: true
+        type: boolean
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  pack:
+    name: pack
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          # 9.0.x packs net8+net9 (global.json pins it) and 10.0.x packs net10.
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: Install Android workloads for every SDK band
+        run: |
+          for major in 9 10; do
+            dir="${RUNNER_TEMP}/sdk${major}"
+            mkdir -p "${dir}"
+            sdk=$(dotnet --list-sdks | grep "^${major}\." | tail -1 | cut -d' ' -f1)
+            ( cd "${dir}" \
+              && dotnet new globaljson --sdk-version "${sdk}" --force \
+              && dotnet workload install android )
+          done
+
+      - name: Set up Android SDK platforms
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 platforms;android-35 platforms;android-36'
+
+      - name: Cache the Maven-resolved .aar
+        uses: actions/cache@v4
+        with:
+          # AndroidMavenLibrary's cache (net9+) plus the net8.0-android34.0 DownloadFile fallback's
+          # obj/ output (see src/OpenTok.Binding.props) — both keyed on the pin, so a version bump
+          # invalidates the cache instead of silently reusing the wrong .aar. webrtc's .aar alone is
+          # 243 MB, so this is the difference between a ~1 minute restore and a ~10 minute one.
+          path: |
+            ~/.cache/dotnet-android/MavenCacheDirectory
+            src/*/obj/*/maven
+          key: opentok-android-maven-${{ hashFiles('Directory.Build.props') }}
+
+      - name: Pack
+        run: |
+          if [ -n "${{ inputs.suffix }}" ]; then
+            ./build/BuildNugets.sh --suffix "${{ inputs.suffix }}"
+          else
+            ./build/BuildNugets.sh
+          fi
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+          if-no-files-found: error
+          retention-days: 7
+
+  validate:
+    name: validate packages
+    needs: pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts
+
+      - name: Run package tests
+        run: dotnet test tests/OpenTok.Net.Android.PackageTests --logger 'trx;LogFileName=package-tests.trx'
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-test-results
+          path: '**/*.trx'
+          if-no-files-found: ignore
+          retention-days: 7
+
+  sample:
+    name: build sample app
+    timeout-minutes: 30
+    needs: pack
+    if: ${{ inputs.build-sample }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # opentok-android-sdk's own classes.jar is Java 17 class file format; javac needs a JDK new
+      # enough to read it — see tests/OpenTok.Net.Android.DeviceTests's own .csproj comment for the
+      # full story of why net8 needs this explicitly and net9/net10 pick it up through $JAVA_HOME
+      # on their own.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The sample targets net10.0-android36.0 and so needs the .NET 10 SDK, not the .NET 9 one
+      # global.json pins.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install the MAUI workload for the .NET 10 band
+        run: |
+          # Workloads are installed per SDK band, and the SDK is resolved from the working
+          # directory - so this has to run from the same scratch global.json the build uses. At the
+          # repository root global.json pins .NET 9, so installing there puts maui-android on a
+          # band the build never sees, and the build fails with NETSDK1147 telling you to install a
+          # workload you just installed.
+          dir="${RUNNER_TEMP}/sample-sdk"
+          mkdir -p "${dir}"
+          ( cd "${dir}" \
+            && dotnet new globaljson \
+                 --sdk-version "$(dotnet --list-sdks | grep '^10\.' | tail -1 | cut -d' ' -f1)" --force \
+            && dotnet workload install maui-android )
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36'
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts
+
+      # The sample consumes the packed package exactly as a MAUI consumer would: it restores from
+      # artifacts/ (see NuGet.config) and links against Com.Opentok.Android.Publisher directly, so
+      # it is the only thing that checks the API is still usable the way the README documents.
+      - name: Build the sample against the packed packages
+        run: |
+          . ./build/pins.sh
+          s="${{ inputs.suffix != '' && format('-{0}', inputs.suffix) || '' }}"
+          # From the same scratch directory the workload was installed into, for the same reason:
+          # the SDK - and therefore the workload set - is resolved from the working directory.
+          ( cd "${RUNNER_TEMP}/sample-sdk" \
+            && dotnet build "${GITHUB_WORKSPACE}/samples/OpenTok.Sample.Android/OpenTok.Sample.Android.csproj" \
+                 --configuration Release \
+                 -p:OpenTokDevicePackageVersion="${OPENTOK_PACKAGE_VERSION}${s}" )
+
+  e2e:
+    name: emulator smoke test (${{ matrix.target-framework }})
+    timeout-minutes: 60
+    needs: pack
+    runs-on: ubuntu-latest
+    strategy:
+      # fail-fast off: when one leg breaks it is worth knowing whether the other did too, since
+      # "net8 only" and "both" point at very different causes.
+      fail-fast: false
+      matrix:
+        target-framework: ${{ fromJSON(inputs.e2e-target-frameworks) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # See the sample job's own comment on why this is needed at all — matters here too, since
+      # the device test app compiles the same OpenTok listener glue the sample does.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          # 8.0.x is here for the net8 matrix leg only - see the workload step below.
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Install Android workloads
+        run: |
+          # The device app is built for the target framework under test, and the band that owns it
+          # is decided by the *API level* rather than the .NET version - the .NET 9 band has API 34
+          # reference packs but no API 34 runtime packs, so a net8 app compiles and then fails to
+          # package. See run-emulator-tests.sh. Install all three bands' workloads so any target
+          # framework in the matrix can build.
+          for sdk in 8 9 10; do
+            version="$(dotnet --list-sdks | grep "^${sdk}\." | tail -1 | cut -d' ' -f1)"
+            [ -z "${version}" ] && continue
+
+            mkdir -p "${RUNNER_TEMP}/sdk${sdk}"
+            ( cd "${RUNNER_TEMP}/sdk${sdk}" \
+              && dotnet new globaljson --sdk-version "${version}" --force \
+              && dotnet workload install android )
+          done
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 platforms;android-35 platforms;android-36'
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts
+
+      - name: Enable KVM
+        # The x86_64 emulator is unusably slow without hardware acceleration, and the runner image
+        # does not grant access to /dev/kvm by default.
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Free disk space
+        # The API-35 emulator refuses to start without ~7.2 GB free for its userdata partition
+        # ("FATAL | Not enough space to create userdata partition"), and after the SDKs, workloads
+        # and Android platforms above, the runner image sits right at that line. Deleting
+        # toolchains this job never touches buys ~10 GB of headroom.
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+          df -h /
+
+      - name: Resolve this leg's package version
+        # In its own step rather than inside the emulator action's script: the action runs its
+        # script with /usr/bin/sh, and pins.sh is bash (set -o pipefail). run: steps default to
+        # bash, and the resolved version crosses over through GITHUB_ENV.
+        run: |
+          . ./build/pins.sh
+          echo "OPENTOK_E2E_VERSION=${OPENTOK_PACKAGE_VERSION}${{ inputs.suffix != '' && format('-{0}', inputs.suffix) || '' }}" >> "$GITHUB_ENV"
+
+      - name: Run smoke tests on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ inputs.e2e-api-level }}
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: ./.github/scripts/run-emulator-tests.sh "$OPENTOK_E2E_VERSION" "${{ matrix.target-framework }}"
+
+      - name: Upload emulator logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-test-logs-${{ matrix.target-framework }}
+          path: emulator-tests.log
+          if-no-files-found: ignore
+          retention-days: 7

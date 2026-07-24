@@ -1,0 +1,91 @@
+name: pull request
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-${{ github.event.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # OpenTok.Net.Android and OpenTok.Net.webrtc.Dependency.Android sit on independent native
+  # version lines (see Directory.Build.props), so there is no single version to resolve here —
+  # every package builds at its own pin, each suffixed with the same beta label.
+  version:
+    name: resolve beta suffix
+    runs-on: ubuntu-latest
+    outputs:
+      suffix: ${{ steps.resolve.outputs.suffix }}
+    steps:
+      - id: resolve
+        run: |
+          suffix="beta.${{ github.event.number }}.${{ github.run_number }}"
+          echo "suffix=${suffix}" >> "$GITHUB_OUTPUT"
+          echo "Building every package at its own version with suffix -${suffix}" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: build
+    needs: version
+    uses: ./.github/workflows/build.yml
+    with:
+      suffix: ${{ needs.version.outputs.suffix }}
+
+  publish:
+    name: publish beta to nuget.org
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    # Forked pull requests get no OIDC token for this repository, so the exchange would fail with a
+    # confusing error. Those PRs still build and test; only the publish step is skipped.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Must match the Environment on the nuget.org trusted publishing policy for this workflow.
+    environment: nuget.org
+    permissions:
+      contents: read
+      # Lets the job request the OIDC token that nuget.org exchanges for a short-lived API key.
+      # Without it the token request fails silently and the login step gets no key.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts
+
+      # Deliberately immediately before the push: the issued key is valid for one hour, and each
+      # OIDC token can be exchanged exactly once.
+      - name: Authenticate to nuget.org
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to nuget.org
+        run: |
+          # Symbol packages are pushed automatically alongside each matching .nupkg. The two
+          # packages depend on each other, so they are pushed together — a partial push leaves ids
+          # that cannot restore.
+          dotnet nuget push "artifacts/*.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate
+
+      - name: Summarise
+        run: |
+          . ./build/pins.sh
+          s="${{ needs.version.outputs.suffix }}"
+          {
+            echo "### Published beta packages to nuget.org"
+            echo "- [OpenTok.Net.Android](https://www.nuget.org/packages/OpenTok.Net.Android/${OPENTOK_PACKAGE_VERSION}-${s})"
+            echo "- [OpenTok.Net.webrtc.Dependency.Android](https://www.nuget.org/packages/OpenTok.Net.webrtc.Dependency.Android/${WEBRTC_PACKAGE_VERSION}-${s})"
+          } >> "$GITHUB_STEP_SUMMARY"

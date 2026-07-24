@@ -1,0 +1,106 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      com.opentok.android:opentok-android-sdk's own POM depends on com.vonage:webrtc — Vonage's
+      WebRTC engine, forked for OpenTok. OpenTok's public API (custom video renderers, stats,
+      texture-backed frames) exposes a handful of this artifact's types directly, which is why it
+      gets a real binding here (Bind="true") rather than being carried as a native-only dependency
+      the way flogger/guava below are: a consumer needs C# types for the parts of this surface
+      OpenTok's own API hands back, not just the .so files at runtime.
+
+      It ships as its own package rather than folding into OpenTok.Net.Android because it is a
+      243 MB .aar (four ABIs' worth of the WebRTC native engine) versioned on its own line — the
+      webrtc artifact's version, unrelated to OpenTok's — so OpenTok.Net.Android stays a normal-sized
+      package with a NuGet dependency on this one, instead of ~250 MB every time either changes.
+    -->
+    <OpenTokGroupId>com.vonage</OpenTokGroupId>
+    <OpenTokArtifact>webrtc</OpenTokArtifact>
+    <OpenTokNativeVersion>$(WebrtcVersion)</OpenTokNativeVersion>
+    <VersionPrefix>$(WebrtcVersion).$(WebrtcBindingRevision)</VersionPrefix>
+  </PropertyGroup>
+
+  <Import Project="../OpenTok.Binding.props" />
+
+  <!--
+    webrtc.aar's own runtime dependencies, at the versions its POM declares. Bind="false" (the
+    @(OpenTokMavenArtifact) default): nothing in this binding's public surface returns Flogger
+    types — it is webrtc's own logging plumbing — so it only needs to be present in the app's
+    classpath, not bound to C#. Guava is declared separately below — see that comment for why it
+    is not a plain @(OpenTokMavenArtifact) row the way this is.
+  -->
+  <ItemGroup>
+    <OpenTokMavenArtifact Include="com.google.flogger:flogger" Version="0.6" Packaging="jar" />
+    <OpenTokMavenArtifact Include="com.google.flogger:flogger-system-backend" Version="0.6" Packaging="jar" />
+  </ItemGroup>
+
+  <!--
+    Guava, on net9/net10: the canonical NuGet package rather than a raw Maven fetch of
+    com.google.guava:guava — unlike flogger, real Guava is an extremely common transitive Android
+    dependency (androidx.concurrent's ListenableFuture support, among others), and
+    samples/OpenTok.Sample.Android's own MAUI dependency chain already pulls in
+    Xamarin.Google.Guava.ListenableFuture 1.0.0.29 on its own. Guava's own jar has bundled
+    com.google.common.util.concurrent.ListenableFuture directly since 27.0, so a second, raw copy
+    of guava.jar collides with that at dex-merge time ("Type ... is defined multiple times") —
+    exactly the error_prone_annotations problem below, one level up. Referencing the same
+    NuGet-ecosystem package this dependency ultimately resolves through lets NuGet's normal
+    single-version-per-package resolution unify the two requests instead: this package requires
+    Xamarin.Google.Guava.ListenableFuture 9999.0.0 (guava's own "empty, avoid conflict" module),
+    NuGet picks the higher of that and 1.0.0.29 project-wide, and the real 1.0.0.29 copy never
+    gets restored at all.
+
+    A newer Guava (33.6.0-android here vs. 31.1-android in opentok-android-sdk's own POM) rather
+    than an exact version match: nothing in this binding calls into Guava from C# (Bind="false"),
+    Guava is unusually careful about not breaking its stable API across major versions, and the
+    whole point is deferring to whatever single version the app's full dependency graph converges
+    on — which a hand-pinned exact version would fight instead of cooperate with.
+
+    Doesn't exist for net8.0-android34.0 (see the net8.0-android34.0 ItemGroup below for the
+    general pattern with error_prone_annotations) — kept as the original raw Maven fetch there,
+    where Java dependency verification does not run anyway.
+  -->
+  <ItemGroup Condition=" '$(TargetFramework)' != 'net8.0-android34.0' ">
+    <PackageReference Include="Xamarin.Google.Guava" Version="33.6.0.1" />
+  </ItemGroup>
+
+  <!--
+    checker-compat-qual: still required by Java dependency verification even with the newer Guava
+    above (whose own nuspec dependency list dropped it along with checker-qual and jsr305 — Guava
+    33.x replaced those with JSpecify, which Xamarin.Google.Guava pulls in on its own). Fetched raw
+    rather than through a NuGet package because — unlike error_prone_annotations and Guava's own
+    ListenableFuture — nothing else in this repository's dependency graph (including
+    samples/OpenTok.Sample.Android's plain MAUI chain) was observed pulling this one in, so there
+    is no second copy for a raw fetch to collide with.
+  -->
+  <ItemGroup Condition=" '$(TargetFramework)' != 'net8.0-android34.0' ">
+    <OpenTokMavenArtifact Include="org.checkerframework:checker-compat-qual" Version="2.5.3" Packaging="jar" />
+  </ItemGroup>
+
+  <!--
+    net8.0-android34.0: raw Maven fetches, at the exact versions guava:31.1-android's own POM
+    declares (Java dependency verification does not run on this band, so nothing here needs to
+    satisfy it — see OpenTok.Binding.props' OpenTokSupportsMavenLibrary comment) — and the one
+    place error_prone_annotations still needs its own row, since the deduplicating NuGet package
+    used above does not exist for this target framework and no net8 consumer in this repository
+    pulls in a conflicting copy to collide with.
+  -->
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net8.0-android34.0' ">
+    <OpenTokMavenArtifact Include="com.google.guava:guava" Version="31.1-android" Packaging="jar" />
+    <OpenTokMavenArtifact Include="com.google.guava:failureaccess" Version="1.0.1" Packaging="jar" />
+    <OpenTokMavenArtifact Include="com.google.guava:listenablefuture" Version="9999.0-empty-to-avoid-conflict-with-guava" Packaging="jar" />
+    <OpenTokMavenArtifact Include="com.google.code.findbugs:jsr305" Version="3.0.2" Packaging="jar" />
+    <OpenTokMavenArtifact Include="org.checkerframework:checker-qual" Version="3.12.0" Packaging="jar" />
+    <OpenTokMavenArtifact Include="org.checkerframework:checker-compat-qual" Version="2.5.3" Packaging="jar" />
+    <OpenTokMavenArtifact Include="com.google.j2objc:j2objc-annotations" Version="1.3" Packaging="jar" />
+    <OpenTokMavenArtifact Include="com.google.errorprone:error_prone_annotations" Version="2.11.0" Packaging="jar" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <AssemblyName>OpenTok.Net.webrtc.Dependency.Android</AssemblyName>
+    <PackageId>OpenTok.Net.webrtc.Dependency.Android</PackageId>
+    <Title>.NET for Android bindings for the native com.vonage:webrtc module OpenTok depends on.</Title>
+    <Description>.NET for Android / .NET MAUI bindings for com.vonage:webrtc $(WebrtcVersion), the WebRTC engine OpenTok.Net.Android's native SDK is built on. Consumed by OpenTok.Net.Android for the parts of its public API (custom renderers, stats) that hand back this engine's own types; not meant to be referenced directly.</Description>
+    <PackageTags>$(PackageTags);WebRTC;dependency</PackageTags>
+  </PropertyGroup>
+
+</Project>
