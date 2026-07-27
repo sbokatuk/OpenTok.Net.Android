@@ -1,0 +1,27 @@
+# What the upstream-drift workflow watches, and the single source of truth for it.
+#
+# build/check-upstream.sh reads this; it knows how to query each ecosystem but nothing about which
+# components this repository binds. Adding a native SDK means adding a row here.
+#
+# Columns are single-tab-separated.
+#   group    reporting group - one GitHub issue per group, titled with this text
+#   label    how the component is named inside the issue
+#   kind     cocoapods | maven | github-release | github-tag
+#   pin      the MSBuild property in Directory.Build.props holding the pinned version
+#   locator  kind-specific: pod name, groupId:artifactId[:packaging][@repo], or owner/repo
+#   confirm  download URL template with {version}, or "-" to derive it from the locator
+#
+# Only the Video SDK drives drift here. Its release notes are the reference for what changed:
+# https://developer.vonage.com/en/video/client-sdk/android/release-notes
+#
+# WebrtcVersion is *derived*, not independently upgradable: it has to equal whatever
+# opentok-android-sdk was built against, which its POM declares. Central carrying a higher
+# com.vonage:webrtc is not an upgrade path - adopting it would desync the
+# AndroidIgnoredJavaDependency in OpenTok.Net.Android.csproj from what the SDK actually pulls. So
+# the webrtc row asks "does the pin match the bound SDK?" rather than "is there a newer one?",
+# which is silent today (2.34.1 declares 121.1.101, which is what is pinned) and speaks up exactly
+# when an OpenTok bump moves webrtc and this pin is left behind.
+#
+# group	label	kind	pin	locator	confirm
+OpenTok Android	Vonage OpenTok (Video API) Android SDK	maven	OpenTokVersion	com.opentok.android:opentok-android-sdk:aar	-
+OpenTok Android	Vonage webrtc (declared by the bound SDK)	maven-pom-dep	WebrtcVersion	com.opentok.android:opentok-android-sdk OpenTokVersion com.vonage:webrtc	-
