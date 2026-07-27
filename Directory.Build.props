@@ -1,0 +1,51 @@
+<Project>
+
+  <PropertyGroup>
+    <!--
+      Package version is <native SDK version>.<binding revision>, e.g. 2.34.1.1 — the same scheme
+      the sibling Net.Agora.Android repository uses for its own packages.
+
+      OpenTok.Net.Android binds com.opentok.android:opentok-android-sdk. That artifact's own POM
+      depends on com.vonage:webrtc — a 243 MB .aar carrying the WebRTC engine OpenTok is built on,
+      whose types (renderer surfaces, stats, texture buffers) OpenTok's public API exposes directly.
+      It ships as its own package, OpenTok.Net.webrtc.Dependency.Android, on its own version line
+      (the webrtc artifact's own version, not OpenTok's) — see src/OpenTok.Net.webrtc.Dependency.Android
+      and build/packages.tsv for why.
+
+      The fourth component belongs to this repository and increments whenever the binding or
+      packaging changes while the native artifact stays put.
+    -->
+    <OpenTokVersion>2.34.1</OpenTokVersion>
+    <OpenTokBindingRevision>1</OpenTokBindingRevision>
+    <WebrtcVersion>121.1.101</WebrtcVersion>
+    <WebrtcBindingRevision>1</WebrtcBindingRevision>
+    <!--
+      The default for projects that do not pick their own line (tests, and the main binding
+      itself); the webrtc dependency .csproj overrides this with its own pair.
+    -->
+    <VersionPrefix>$(OpenTokVersion).$(OpenTokBindingRevision)</VersionPrefix>
+
+    <Authors>s.bokatuk</Authors>
+    <Company>s.bokatuk</Company>
+    <Copyright>Copyright © s.bokatuk</Copyright>
+    <PackageProjectUrl>https://github.com/sbokatuk/OpenTok.Net.Android</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sbokatuk/OpenTok.Net.Android</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <!--
+      MIT covers the binding code in this repository. Vonage's own SDK is distributed under its
+      own SDK licence terms (not an OSI-approved licence with its own SPDX identifier), so no
+      second licence expression is added here; nothing is claimed about Vonage's own terms.
+    -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition=" '$(GITHUB_ACTIONS)' == 'true' ">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

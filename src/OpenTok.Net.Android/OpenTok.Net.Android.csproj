@@ -1,0 +1,83 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OpenTokGroupId>com.opentok.android</OpenTokGroupId>
+    <OpenTokArtifact>opentok-android-sdk</OpenTokArtifact>
+    <OpenTokNativeVersion>$(OpenTokVersion)</OpenTokNativeVersion>
+  </PropertyGroup>
+
+  <Import Project="../OpenTok.Binding.props" />
+
+  <!--
+    opentok-android-sdk's own POM depends on com.vonage:webrtc, com.google.flogger:flogger(-system-backend)
+    and com.google.guava:guava — all bound (or carried native-only) by
+    OpenTok.Net.webrtc.Dependency.Android. Referenced as a *packed* NuGet dependency (resolved from
+    the local-artifacts feed in NuGet.config, not a bare ProjectReference): Java dependency
+    verification (_VerifyJavaDependencies, XA4241/XA4242) reads @(PackageReference)'s restored
+    .nuspec metadata to know what a dependency already provides, but does not walk into a same-solution
+    @(ProjectReference)'s own @(AndroidMavenLibrary) items — so with a plain ProjectReference this
+    project's own verification pass fails, reporting webrtc/flogger/guava unsatisfied even though
+    the referenced project binds/carries them. Packing first and referencing the package is also
+    what makes this project's own class-parse pass resolve cross-references to the webrtc project's
+    already-bound Com.Vonage.Webrtc.* types instead of re-binding (and duplicating) them.
+
+    Not pinned with brackets: Java dependency verification (XAJDV7004) parses
+    %(PackageReference.Version) with NuGet.Versioning.NuGetVersion.Parse, which rejects the
+    "[x.y.z]" exact-range syntax outright. The local-artifacts feed only ever carries the one
+    version build/BuildNugets.sh just packed, so a bare version still resolves deterministically
+    here — unlike tests/samples consuming this package from outside the repository, which do use
+    brackets (see tests/OpenTok.Net.Android.DeviceTests and samples/OpenTok.Sample.Android).
+    Build this project's dependency first: `dotnet pack src/OpenTok.Net.webrtc.Dependency.Android
+    -o artifacts` (build/BuildNugets.sh does this in packages.tsv order automatically).
+
+    Includes $(VersionSuffix) when set: build/BuildNugets.sh's "suffix" option packs both packages
+    with the same -p:VersionSuffix, so OpenTok.Net.webrtc.Dependency.Android itself lands in
+    local-artifacts as e.g. 121.1.101.1-beta.1.1. A bare "121.1.101.1" reference is a stable-minimum
+    range to NuGet and does not match that prerelease, which restore then reports as NU1102
+    (confirmed by a PR build failing exactly this way with no matching version in either nuget.org
+    or local-artifacts).
+  -->
+  <PropertyGroup>
+    <WebrtcPackageVersion>$(WebrtcVersion).$(WebrtcBindingRevision)</WebrtcPackageVersion>
+    <WebrtcPackageVersion Condition=" '$(VersionSuffix)' != '' ">$(WebrtcPackageVersion)-$(VersionSuffix)</WebrtcPackageVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenTok.Net.webrtc.Dependency.Android" Version="$(WebrtcPackageVersion)" />
+  </ItemGroup>
+
+  <!--
+    _VerifyJavaDependencies (XA4241/XA4242) only recognizes a dependency as satisfied by walking
+    @(AndroidMavenLibrary)/@(AndroidLibrary) items declared *in this project*, or by matching a
+    handful of Microsoft-curated NuGet packages it knows about (the ones XA4242 itself suggests by
+    name) — it does not open an arbitrary referenced .nupkg to check what Maven coordinates its own
+    lib/<tfm>/*.aar carries, even though that .aar (see OpenTok.Net.webrtc.Dependency.Android above)
+    genuinely is on the classpath by the time a consuming app links this package. Ignored rather
+    than left failing: these four are exactly the artifacts that package binds or carries
+    native-only — nothing here is actually missing.
+  -->
+  <ItemGroup>
+    <AndroidIgnoredJavaDependency Include="com.vonage:webrtc:$(WebrtcVersion)" />
+    <AndroidIgnoredJavaDependency Include="com.google.flogger:flogger:0.6" />
+    <AndroidIgnoredJavaDependency Include="com.google.flogger:flogger-system-backend:0.6" />
+    <AndroidIgnoredJavaDependency Include="com.google.guava:guava:31.1-android" />
+  </ItemGroup>
+
+  <!--
+    opentok-android-sdk's POM also depends on androidx.annotation, already available as a
+    ready-made NuGet binding (used by countless other Android bindings) rather than one more
+    Maven artifact to resolve by hand.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Xamarin.AndroidX.Annotation" Version="1.9.1" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <AssemblyName>OpenTok.Net.Android</AssemblyName>
+    <PackageId>OpenTok.Net.Android</PackageId>
+    <Title>.NET for Android bindings for the native Vonage OpenTok Android SDK.</Title>
+    <Description>.NET for Android / .NET MAUI bindings for the Vonage OpenTok (Video API) Android SDK, generated from com.opentok.android:opentok-android-sdk $(OpenTokVersion) on Maven Central. Lets a .NET app create and join OpenTok video sessions and publish/subscribe audio and video.</Description>
+    <PackageTags>$(PackageTags);Video;VideoCall;WebRTC;streaming</PackageTags>
+  </PropertyGroup>
+
+</Project>

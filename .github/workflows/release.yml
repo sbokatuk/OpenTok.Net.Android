@@ -1,0 +1,124 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # The tag is the release train's label, not a version to stamp: OpenTok.Net.Android and
+  # OpenTok.Net.webrtc.Dependency.Android sit on independent native version lines (see
+  # Directory.Build.props) and each publishes at its own pin. Republishing a package whose pin did
+  # not move is a no-op — the push below uses --skip-duplicate.
+  build:
+    name: build
+    uses: ./.github/workflows/build.yml
+    with:
+      # The sample is a compile check on the public API, and the commit being tagged has already
+      # been through it on its pull request. Building it again here would put a MAUI workload
+      # install between the packages being built and being published, for a result already known.
+      build-sample: false
+
+  publish:
+    name: publish to nuget.org and create release
+    needs: [build]
+    runs-on: ubuntu-latest
+    # Must match the Environment on the nuget.org trusted publishing policy for this workflow.
+    environment: nuget.org
+    permissions:
+      # contents: write creates the GitHub release; id-token: write lets the job request the OIDC
+      # token that nuget.org exchanges for a short-lived API key. Without the latter the token
+      # request fails silently and the login step gets no key.
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Needed to find the previous tag when generating the changelog.
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts
+
+      # nuget.org is published to first: a GitHub release linking to packages that failed to upload
+      # would be worse than a release created a moment late.
+      # Deliberately immediately before the push: the issued key is valid for one hour, and each
+      # OIDC token can be exchanged exactly once.
+      - name: Authenticate to nuget.org
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to nuget.org
+        run: |
+          dotnet nuget push "artifacts/*.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate
+
+      - name: Compose release notes
+        run: |
+          . ./build/pins.sh
+          previous=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+
+          # A curated docs/release-notes/<tag>.md replaces the generated commit list when one
+          # exists (tags are the train label, e.g. v2.34.1.1 for an OpenTok-led train).
+          notes="docs/release-notes/${GITHUB_REF_NAME#v}.md"
+
+          {
+            if [ -f "${notes}" ]; then
+              echo "==> using curated notes from ${notes}" >&2
+              cat "${notes}"
+            else
+              echo "## What's changed"
+              echo
+              if [ -n "${previous}" ]; then
+                git log --no-merges --pretty='- %s (%h)' "${previous}..${GITHUB_REF_NAME}"
+              else
+                # No previous tag: listing every commit would reach back to the repository's first
+                # commit, which is noise rather than a changelog.
+                echo "Initial release."
+              fi
+            fi
+            echo
+            if [ -n "${previous}" ]; then
+              echo "**Full changelog**: ${{ github.server_url }}/${{ github.repository }}/compare/${previous}...${GITHUB_REF_NAME}"
+              echo
+            fi
+
+            echo "## Packages"
+            echo
+            echo "Bound against com.opentok.android:opentok-android-sdk \`${OPENTOK_VERSION}\` and com.vonage:webrtc \`${WEBRTC_VERSION}\` (Maven Central). Each package publishes at its own version line; a row whose version did not move since the previous train was skipped by the push, not republished."
+            echo
+            echo "| Package | NuGet |"
+            echo "| --- | --- |"
+            echo "| \`OpenTok.Net.Android\` | [${OPENTOK_PACKAGE_VERSION}](https://www.nuget.org/packages/OpenTok.Net.Android/${OPENTOK_PACKAGE_VERSION}) |"
+            echo "| \`OpenTok.Net.webrtc.Dependency.Android\` | [${WEBRTC_PACKAGE_VERSION}](https://www.nuget.org/packages/OpenTok.Net.webrtc.Dependency.Android/${WEBRTC_PACKAGE_VERSION}) |"
+          } > release-notes.md
+
+          cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The packages themselves are not attached: nuget.org is the distribution channel, and the
+          # notes link to every published package instead.
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME#v}" \
+            --notes-file release-notes.md

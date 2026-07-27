@@ -1,0 +1,76 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    MAUI sample that creates Com.Opentok.Android.Publisher directly against the raw binding — no
+    cross-platform façade — and shows the local camera preview. See MainPage.xaml.cs and
+    OpenTokVideoView.cs.
+
+    Consumes the packed OpenTok.Net.Android package from artifacts/ (see NuGet.config), so it
+    exercises the package exactly as a MAUI consumer would.
+
+    One target framework, net10.0-android36.0, mirroring Net.Agora.Sample.Android: the sample is a
+    compile check on the public API plus a runnable demo, and one MAUI head is enough for both —
+    the package's other target frameworks are exercised by the device tests. Building this needs
+    the .NET 10 SDK with the maui-android workload, which this repository's global.json does not
+    select — hence the scratch directory in the README.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
+
+    <OutputType>Exe</OutputType>
+    <RootNamespace>OpenTok.Sample.Android</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+
+    <ApplicationTitle>OpenTok Sample</ApplicationTitle>
+    <ApplicationId>com.sbokatuk.opentok.sample</ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+
+    <!-- opentok-android-sdk's own manifest declares minSdkVersion 24 — see OpenTok.Binding.props. -->
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <!--
+    Same JDK gotcha as tests/OpenTok.Net.Android.DeviceTests/*.csproj: this only matters here if
+    OpenTokSdkBand-style band selection ever adds net8/net9 heads to this sample, which it does
+    not today (net10 only) — kept for parity so copying this project forward doesn't silently
+    lose the fix. See that project's own comment for the full explanation.
+  -->
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net8.0-android34.0' And '$(JavaSdkDirectory)' == '' And '$(JAVA_HOME)' != '' ">
+    <JavaSdkDirectory>$(JAVA_HOME)</JavaSdkDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
+    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+    <MauiFont Include="Resources\Fonts\*" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!--
+      Defaults to the version in Directory.Build.props so a plain build after "build/BuildNugets.sh"
+      works; override with -p:OpenTokDevicePackageVersion=... to test a specific build.
+    -->
+    <OpenTokDevicePackageVersion Condition=" '$(OpenTokDevicePackageVersion)' == '' ">$(OpenTokVersion).$(OpenTokBindingRevision)</OpenTokDevicePackageVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.9" />
+
+    <!--
+      Exact version, in brackets — a bare version is a *minimum* to NuGet, so a build missing from
+      artifacts/ would silently resolve from nuget.org instead of failing the restore. Pulls in
+      OpenTok.Net.webrtc.Dependency.Android transitively via OpenTok.Net.Android's own nuspec
+      dependency.
+    -->
+    <PackageReference Include="OpenTok.Net.Android" Version="[$(OpenTokDevicePackageVersion)]" />
+  </ItemGroup>
+
+</Project>

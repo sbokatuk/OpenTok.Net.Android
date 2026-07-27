@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:OpenTok.Sample.Android"
+             x:Class="OpenTok.Sample.Android.MainPage"
+             Title="OpenTok">
+
+    <Grid Padding="24" RowSpacing="12" RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+        <Label Grid.Row="0"
+               Text="OpenTok Video for .NET Android"
+               FontSize="22"
+               FontAttributes="Bold" />
+
+        <Label Grid.Row="1"
+               x:Name="StatusLabel"
+               FontSize="13"
+               TextColor="Gray" />
+
+        <HorizontalStackLayout Grid.Row="2" Spacing="12">
+            <Button x:Name="StartButton"
+                    Text="Start preview"
+                    Clicked="OnStartPreviewClicked" />
+            <Button x:Name="StopButton"
+                    Text="Stop"
+                    IsEnabled="False"
+                    Clicked="OnStopClicked" />
+            <Button x:Name="MuteButton"
+                    Text="Mute audio"
+                    IsEnabled="False"
+                    Clicked="OnMuteClicked" />
+        </HorizontalStackLayout>
+
+        <!-- The container Publisher.View is attached into once a publisher exists — see OpenTokVideoView.cs. -->
+        <local:OpenTokVideoView Grid.Row="3"
+                                x:Name="LocalView" />
+
+        <Label Grid.Row="4"
+               x:Name="ActivityLabel"
+               FontSize="12"
+               TextColor="Gray" />
+
+    </Grid>
+
+</ContentPage>

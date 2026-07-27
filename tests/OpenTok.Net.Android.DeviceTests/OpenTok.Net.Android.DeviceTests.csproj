@@ -1,0 +1,95 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OpenTokDeviceTargetFramework Condition=" '$(OpenTokDeviceTargetFramework)' == '' ">net9.0-android35.0</OpenTokDeviceTargetFramework>
+    <TargetFramework>$(OpenTokDeviceTargetFramework)</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+
+    <ApplicationId>com.sbokatuk.opentok.android.devicetests</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <!-- opentok-android-sdk's own manifest declares minSdkVersion 24 — see OpenTok.Binding.props. -->
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+
+    <!--
+      The property, not an @(AndroidManifest) item, and an explicit file rather than none at all.
+      The .NET 9 and .NET 10 Android SDKs generate a manifest when the project has no
+      $(AndroidManifest); the .NET 8 one defaults the property to the project root and then fails
+      because nothing is there:
+
+          error XA1018: Specified AndroidManifest file does not exist: .../AndroidManifest.xml
+
+      The API level in the target framework decides which SDK band builds the app, and
+      net8.0-android34.0 — an e2e matrix leg — is the .NET 8 band.
+    -->
+    <AndroidManifest>AndroidManifest.xml</AndroidManifest>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+
+    <!--
+      No Java shrinking, no managed trimming and no AOT, in any configuration.
+
+      run-emulator-tests.sh builds this in Debug, where none of the three happen anyway; these are
+      here so that building it in Release by hand behaves the same rather than failing in two
+      confusing ways:
+
+        - R8 legitimately removes Java classes nothing references. The entry-point check below
+          reaches OpenTok's classes only through Class.forName, which R8 cannot see, so a shrunk
+          build reports them missing when the package is in fact correct.
+        - AOT bakes type layouts from the assembly set it was given. With trimming off, the image
+          disagrees with what the runtime loads and the app aborts on startup before any check
+          runs, with nothing in the message to suggest a build configuration.
+
+      A failure here should only ever mean "the .aar is not in the app" or "the binding does not
+      drive the SDK", which are the two things this suite is meant to be able to say.
+    -->
+    <AndroidLinkTool></AndroidLinkTool>
+    <AndroidLinkMode>None</AndroidLinkMode>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <!--
+    opentok-android-sdk's own classes.jar is compiled to Java 17 class file format (major version
+    61); Vonage's own docs say as much ("for Android SDK above 2.28.1, configure compileOptions
+    with ... JavaVersion.VERSION_17"). Compiling this app's generated Java glue
+    (*_Implementor.java, one per bound listener interface) against it needs a JDK new enough to
+    read that class file, which is where net8.0-android34.0 differs from net9/net10: those bands'
+    javac invocation respects $(JAVA_HOME) and picks up whatever JDK the environment already has
+    (17, on a machine set up for this repository), but net8's defaults to its own older bundled
+    JDK regardless of $(JAVA_HOME) — failing with "bad class file ... wrong version 61.0, should
+    be 55.0" (Java 11) the first time javac opens one of OpenTok's own classes.
+
+    Falls back to $(JAVA_HOME) explicitly so a net8 app build behaves like net9/net10 rather than
+    needing a separate -p:JavaSdkDirectory=... on the command line — as long as $(JAVA_HOME) is
+    itself JDK 17+, which it must already be for net9/net10 to compile these same glue classes.
+  -->
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net8.0-android34.0' And '$(JavaSdkDirectory)' == '' And '$(JAVA_HOME)' != '' ">
+    <JavaSdkDirectory>$(JAVA_HOME)</JavaSdkDirectory>
+  </PropertyGroup>
+
+  <!--
+    The e2e deliberately consumes the packed NuGet from ./artifacts rather than a ProjectReference,
+    so it exercises the artifact that actually gets published — including the merged net10 assets,
+    which only exist in the package (see build/merge-packages.py) and which a ProjectReference
+    would prove nothing about. See NuGet.config for the local feed.
+  -->
+  <PropertyGroup>
+    <OpenTokDevicePackageVersion Condition=" '$(OpenTokDevicePackageVersion)' == '' ">$(OpenTokVersion).$(OpenTokBindingRevision)</OpenTokDevicePackageVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Exact version, in brackets — a bare version is a *minimum* to NuGet, so a build missing from
+      artifacts/ would silently resolve from nuget.org instead of failing the restore. Pulls in
+      OpenTok.Net.webrtc.Dependency.Android transitively via OpenTok.Net.Android's own nuspec
+      dependency (see src/OpenTok.Net.Android/OpenTok.Net.Android.csproj).
+    -->
+    <PackageReference Include="OpenTok.Net.Android" Version="[$(OpenTokDevicePackageVersion)]" />
+  </ItemGroup>
+
+</Project>
