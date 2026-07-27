@@ -34,10 +34,17 @@ public class MainActivity : Activity
     {
         base.OnCreate(savedInstanceState);
 
-        // Off the UI thread: creating a publisher does camera/microphone and file work, and a
+        // Off the UI thread (creating a publisher does camera/microphone and file work, and a
         // StrictMode violation on the main thread would be reported as a failure of whichever
-        // check happened to be running.
-        Task.Run(RunSmokeTests);
+        // check happened to be running), but a HandlerThread rather than a bare Task.Run: the SDK's
+        // DefaultAudioDevice constructs a PhoneStateListener, which needs a Handler on a thread that
+        // has called Looper.prepare() — a ThreadPool thread never has one, so Handler's own
+        // constructor throws a NullPointerException reading the (null) Looper's message queue. A
+        // HandlerThread is a real Android thread with its own prepared Looper, so it stays off the
+        // UI thread while still giving the SDK the Looper it needs.
+        var thread = new HandlerThread("OpenTokE2E");
+        thread.Start();
+        new Handler(thread.Looper!).Post(RunSmokeTests);
     }
 
     private static void RunSmokeTests()
