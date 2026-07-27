@@ -29,9 +29,21 @@
     brackets (see tests/OpenTok.Net.Android.DeviceTests and samples/OpenTok.Sample.Android).
     Build this project's dependency first: `dotnet pack src/OpenTok.Net.webrtc.Dependency.Android
     -o artifacts` (build/BuildNugets.sh does this in packages.tsv order automatically).
+
+    Includes $(VersionSuffix) when set: build/BuildNugets.sh's "suffix" option packs both packages
+    with the same -p:VersionSuffix, so OpenTok.Net.webrtc.Dependency.Android itself lands in
+    local-artifacts as e.g. 121.1.101.1-beta.1.1. A bare "121.1.101.1" reference is a stable-minimum
+    range to NuGet and does not match that prerelease, which restore then reports as NU1102
+    (confirmed by a PR build failing exactly this way with no matching version in either nuget.org
+    or local-artifacts).
   -->
+  <PropertyGroup>
+    <WebrtcPackageVersion>$(WebrtcVersion).$(WebrtcBindingRevision)</WebrtcPackageVersion>
+    <WebrtcPackageVersion Condition=" '$(VersionSuffix)' != '' ">$(WebrtcPackageVersion)-$(VersionSuffix)</WebrtcPackageVersion>
+  </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="OpenTok.Net.webrtc.Dependency.Android" Version="$(WebrtcVersion).$(WebrtcBindingRevision)" />
+    <PackageReference Include="OpenTok.Net.webrtc.Dependency.Android" Version="$(WebrtcPackageVersion)" />
   </ItemGroup>
 
   <!--
