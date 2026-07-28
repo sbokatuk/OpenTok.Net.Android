@@ -24,8 +24,8 @@ namespace OpenTok.Net.Android.PackageTests;
 public class TransformersPackageTests
 {
     [Theory]
-    [MemberData(nameof(Packages.Frameworks), MemberType = typeof(Packages))]
-    public void Carries_an_assembly_for_every_target_framework(string tfm)
+    [MemberData(nameof(Packages.TransformersFrameworks), MemberType = typeof(Packages))]
+    public void Carries_an_assembly_for_its_target_framework(string tfm)
     {
         using var package = Packages.OpenPackage(Packages.Transformers);
 
@@ -33,9 +33,30 @@ public class TransformersPackageTests
         Assert.True(package.GetEntry(expected) is not null, $"missing '{expected}'.");
     }
 
+    [Fact]
+    public void Ships_only_the_two_target_frameworks_that_fit_the_size_limit()
+    {
+        // The size fix, asserted rather than left to a comment. Three copies of this payload came
+        // to 319 MB and nuget.org refused the push with HTTP 413; two come to ~160 MB. Restoring
+        // net9 would rebuild that failure, and would do it where nothing else looks — the package
+        // still packs and still installs, and only the release push finds out.
+        using var package = Packages.OpenPackage(Packages.Transformers);
+
+        var frameworks = package.Entries
+            .Where(e => e.FullName.StartsWith("lib/", StringComparison.Ordinal))
+            .Select(e => e.FullName.Split('/')[1])
+            .Distinct()
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(
+            Packages.TransformersTargetFrameworks.Order(StringComparer.Ordinal),
+            frameworks);
+    }
+
     [Theory]
-    [MemberData(nameof(Packages.Frameworks), MemberType = typeof(Packages))]
-    public void Carries_the_transformers_aar_for_every_target_framework(string tfm)
+    [MemberData(nameof(Packages.TransformersFrameworks), MemberType = typeof(Packages))]
+    public void Carries_the_transformers_aar(string tfm)
     {
         using var package = Packages.OpenPackage(Packages.Transformers);
 
@@ -51,27 +72,31 @@ public class TransformersPackageTests
     }
 
     [Theory]
-    [MemberData(nameof(Packages.Frameworks), MemberType = typeof(Packages))]
-    public void Carries_the_ml_libraries_the_transformers_artifact_declares(string tfm)
+    [MemberData(nameof(Packages.TransformersFrameworks), MemberType = typeof(Packages))]
+    public void Carries_the_ml_library_that_contributes_something_the_main_aar_lacks(string tfm)
     {
         using var package = Packages.OpenPackage(Packages.Transformers);
 
         var names = AarsFor(package, tfm).Select(e => Path.GetFileName(e.FullName)).ToList();
 
-        // mltransformers is the one that matters most, and the reason shipping the main .aar alone
-        // is not enough: it carries libs/libVonageSelfieSegmentation_android_lib.jar — the
-        // MediaPipe classes and com.vonage.mltransformers.NativeLib — which the background
-        // transformers reach through JNI. Without it the failure is NoClassDefFoundError, which
-        // names nothing useful.
+        // mltransformers is the reason shipping the main .aar alone is not enough: it carries
+        // libs/libVonageSelfieSegmentation_android_lib.jar — the MediaPipe classes and
+        // com.vonage.mltransformers.NativeLib — which the background transformers reach through
+        // JNI. Without it the failure is NoClassDefFoundError, which names nothing useful.
         Assert.Contains(names, n => n.StartsWith("mltransformers-ps16k-", StringComparison.Ordinal));
-        Assert.Contains(names, n => n.StartsWith("mltransformersaudionoisesuppression-ps16k-", StringComparison.Ordinal));
 
-        // "-ps16k", not the unsuffixed artifacts. That is the 16 KB page-size build Android 15
-        // requires on 64-bit devices, and it is what client-sdk-video-transformers' own POM
-        // declares — so resolving the plain pair would be both a regression and a silent one.
+        // The POM's other declared ML library is deliberately absent, and that is asserted rather
+        // than merely allowed. It holds an empty classes.jar and one .so already present in the
+        // main .aar byte for byte, so it was 22.6 MB of duplicate per target framework — which
+        // stopped being merely wasteful when this package hit nuget.org's 250 MB ceiling. Its .so
+        // is still checked for, from the main .aar, by Carries_the_models_each_transformer_needs.
         Assert.DoesNotContain(names, n =>
-            n.StartsWith("mltransformers-4", StringComparison.Ordinal) ||
-            n.StartsWith("mltransformersaudionoisesuppression-1", StringComparison.Ordinal));
+            n.StartsWith("mltransformersaudionoisesuppression", StringComparison.Ordinal));
+
+        // "-ps16k", not the unsuffixed artifact. That is the 16 KB page-size build Android 15
+        // requires on 64-bit devices, and it is what client-sdk-video-transformers' own POM
+        // declares — so resolving the plain one would be both a regression and a silent one.
+        Assert.DoesNotContain(names, n => n.StartsWith("mltransformers-4", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -84,7 +109,7 @@ public class TransformersPackageTests
         //   ns_model_1 / ns_model_2     audio noise suppression
         using var package = Packages.OpenPackage(Packages.Transformers);
 
-        var aar = AarsFor(package, Packages.TargetFrameworks[0])
+        var aar = AarsFor(package, Packages.TransformersTargetFramework)
             .Single(e => Path.GetFileName(e.FullName)
                 .StartsWith("client-sdk-video-transformers-", StringComparison.Ordinal));
 

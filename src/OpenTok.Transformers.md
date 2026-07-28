@@ -25,13 +25,13 @@ link error, which is why it went unnoticed.
 
 ## What the package contains
 
-Three Maven artifacts, which is one more than it looks like from the outside:
+`client-sdk-video-transformers`' POM declares three Maven artifacts. Two are shipped:
 
-| Artifact | Carries |
-| --- | --- |
-| `com.vonage:client-sdk-video-transformers` | `libopentok_transformers.so`, `libmltransformers.so` and `libmltransformersaudionoisesuppression.so` for three ABIs, plus the three `.tflite` models. **Its `classes.jar` is empty** — 22 bytes. |
-| `com.vonage:mltransformers-ps16k` | `libs/libVonageSelfieSegmentation_android_lib.jar` — 159 MediaPipe classes plus `com.vonage.mltransformers.NativeLib`, the loader — and the segmentation model. |
-| `com.vonage:mltransformersaudionoisesuppression-ps16k` | native only; its `classes.jar` is empty too. |
+| Artifact | Shipped | Carries |
+| --- | --- | --- |
+| `com.vonage:client-sdk-video-transformers` | yes | `libopentok_transformers.so`, `libmltransformers.so` and `libmltransformersaudionoisesuppression.so` for three ABIs, plus the three `.tflite` models. **Its `classes.jar` is empty** — 22 bytes. |
+| `com.vonage:mltransformers-ps16k` | yes | `libs/libVonageSelfieSegmentation_android_lib.jar` — 159 MediaPipe classes plus `com.vonage.mltransformers.NativeLib`, the loader — and `assets/selfie_segmentation_gpu.binarypb`. |
+| `com.vonage:mltransformersaudionoisesuppression-ps16k` | no | an empty `classes.jar` and one `.so` that is already in the main `.aar`, byte for byte. |
 
 The second row is the one worth knowing about. The main `.aar` is self-contained as far as *native*
 code goes, so shipping it alone is tempting — but the background transformers reach MediaPipe's Java
@@ -39,9 +39,42 @@ components through JNI, and `NativeLib` is what loads the native library in the 
 package carrying only the main `.aar` would fail with `NoClassDefFoundError` rather than with
 anything that names the real problem.
 
-All three are `Bind="false"`. Nothing in OpenTok's public API hands back a MediaPipe type, so they
-need to be on the classpath rather than projected into C#; binding MediaPipe would also mean
-maintaining a metadata file for a surface no consumer of this package calls.
+The third row is dropped deliberately, and "the POM declares it" is normally the end of that
+argument. Opened and compared, it holds nothing that is not already shipped: no assets, no
+resources, no Java, and a `libmltransformersaudionoisesuppression.so` whose SHA-256 matches the copy
+in the main `.aar`. So it contributed 22.6 MB of duplicate to every target framework and nothing
+else — tolerable while it was merely wasteful, not once this package reached nuget.org's 250 MB
+ceiling. It is listed as an `AndroidIgnoredJavaDependency` rather than left out silently, because
+Java dependency verification reads the POM and would otherwise fail the build with XA4241 naming an
+artifact that is, in substance, present.
+
+`mltransformers-ps16k` keeps its own duplicate `.so` files for the opposite reason: unlike the audio
+one it *also* carries things nothing else has, and stripping them out would mean unpacking and
+repacking an `.aar` at build time — a real risk to background blur, which cannot be tested without a
+device, to save space the package no longer needs to save.
+
+Both shipped artifacts are `Bind="false"`. Nothing in OpenTok's public API hands back a MediaPipe
+type, so they need to be on the classpath rather than projected into C#; binding MediaPipe would
+also mean maintaining a metadata file for a surface no consumer of this package calls.
+
+## Target frameworks
+
+`net8.0-android34.0` and `net10.0-android36.0` — two, where every other package here ships three.
+
+Three copies of the payload came to 319 MB and nuget.org refused the push with `HTTP 413`; two come
+to 167 MB. `net9` is the one to drop because it is the one nothing needs an exact match for: NuGet
+resolves the best *compatible* asset folder, so a net9 app takes the net8 copy and gets everything.
+That is verified rather than assumed — CI's `transformers-packaging` job builds an APK at both
+net9 (the fallback path) and net10 (its own folder) and checks every `.so` and `.tflite` arrives.
+
+This is safe here in a way it would not be for the binding, because the package has no managed API
+at all. There is nothing target-framework-specific in it to get wrong.
+
+One related knob, in the `.csproj`: `AndroidGenerateLibraryAar=false`. The .NET 10 Android SDK folds
+the native payload of every `Bind="false"` library into a project-level `.aar`, which for a package
+that is *nothing but* payload means a complete second copy — 42 MB, and the largest single entry in
+the package. The .NET 9 band does not do this, which is why the net10 half was half again the size
+of the net8 half until it was turned off.
 
 ## The `-ps16k` suffix
 

@@ -10,7 +10,12 @@
 #
 # The transformers row depends on nothing here, deliberately: it carries native payload only (see
 # src/OpenTok.Transformers.md), and a consumer adds it alongside OpenTok.Net.Android only if it
-# wants background blur, background replacement or noise suppression — which costs ~70 MB.
+# wants background blur, background replacement or noise suppression — which costs ~60 MB.
+#
+# Every row packs in both SDK band passes, including transformers — it just builds one target
+# framework per pass rather than the usual net8+net9 / net10, so the two passes still pair up and
+# merge normally. Why it ships two frameworks and not three is a nuget.org size limit, explained in
+# src/OpenTok.Net.Transformers.Android/OpenTok.Net.Transformers.Android.csproj.
 #
 # Columns
 #   id       short label used only for build log messages
