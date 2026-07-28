@@ -12,21 +12,86 @@ permissions:
   contents: read
 
 jobs:
+  # The release path packs and publishes without re-running validate/sample/e2e, on the grounds
+  # that the tagged commit already went through them on its pull request. That reasoning only
+  # holds if the commit is genuinely on the default branch — a tag cut from an unmerged branch,
+  # or from a commit force-pushed away since, would ship having been verified by nothing. Two
+  # cheap ubuntu minutes to make the assumption explicit rather than implicit.
+  guard:
+    name: verify the tag is on the default branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse a tag that never went through a pull request
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          # A tag push checks out the tag, and the default branch's ref is not necessarily among
+          # the refs fetched with it, so ask for it by name before testing ancestry.
+          git fetch --no-tags --quiet origin \
+            "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${DEFAULT_BRANCH}"; then
+            echo "::error::${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not an ancestor of ${DEFAULT_BRANCH}. Releases skip the test suites because the tagged commit was verified on its pull request; this commit was not. Merge it first, then re-tag."
+            exit 1
+          fi
+
+          echo "${GITHUB_REF_NAME} -> ${GITHUB_SHA} is on ${DEFAULT_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
+
+  # The tag does not decide what gets stamped — each package packs at its own pin from
+  # Directory.Build.props — but it is what the GitHub release and the changelog range are named
+  # after, so a tag that disagrees with the props would advertise a version nobody published.
+  # Cheap to assert here, and impossible to notice afterwards.
+  version:
+    name: resolve release version
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: resolve
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          case "${VERSION}" in
+            [0-9]*.[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "::error::tag '${GITHUB_REF_NAME}' does not look like a version (expected e.g. v2.34.1.4)"
+              exit 1
+              ;;
+          esac
+
+          sdk="$(sed -n 's:.*<OpenTokVersion>\(.*\)</OpenTokVersion>.*:\1:p' Directory.Build.props | head -1)"
+          revision="$(sed -n 's:.*<OpenTokBindingRevision>\(.*\)</OpenTokBindingRevision>.*:\1:p' Directory.Build.props | head -1)"
+          expected="${sdk}.${revision}"
+
+          if [ "${VERSION%%-*}" != "${expected}" ]; then
+            echo "::error::tag '${GITHUB_REF_NAME}' does not match Directory.Build.props (${expected}). Bump the props or move the tag."
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "releasing ${VERSION}" >> "$GITHUB_STEP_SUMMARY"
+
   # The tag is the release train's label, not a version to stamp: OpenTok.Net.Android and
   # OpenTok.Net.webrtc.Dependency.Android sit on independent native version lines (see
   # Directory.Build.props) and each publishes at its own pin. Republishing a package whose pin did
   # not move is a no-op — the push below uses --skip-duplicate.
   build:
     name: build
+    needs: [guard, version]
     uses: ./.github/workflows/build.yml
     with:
-      # The sample is a compile check on the public API, and the commit being tagged has already
-      # been through it on its pull request. Building it again here would put a MAUI workload
-      # install between the packages being built and being published, for a result already known.
-      build-sample: false
-      # Same reasoning: the Release packaging check is a correctness check on the commit, which its
-      # own pull request already ran.
-      verify-release: false
+      # Verification already happened on this commit's pull request, and the guard job above
+      # proved the tag points at that commit. A release packs and publishes, nothing more.
+      verify: false
 
   publish:
     name: publish to nuget.org and create release
