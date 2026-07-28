@@ -15,7 +15,7 @@ Two packages, from `net8.0-android` through `net10.0-android`:
 | --- | --- | --- |
 | `OpenTok.Net.Android` | [`com.opentok.android:opentok-android-sdk`](https://central.sonatype.com/artifact/com.opentok.android/opentok-android-sdk) | Always — `Session`, `Publisher`, `Subscriber` and the rest of OpenTok's own API. |
 | `OpenTok.Net.webrtc.Dependency.Android` | [`com.vonage:webrtc`](https://central.sonatype.com/artifact/com.vonage/webrtc) | Never referenced directly — a NuGet dependency of the package above, carrying the WebRTC engine OpenTok is built on. |
-| `OpenTok.Net.Transformers.Android` | [`com.vonage:client-sdk-video-transformers`](https://central.sonatype.com/artifact/com.vonage/client-sdk-video-transformers) and the two ML libraries it declares | You want background blur, background replacement or audio noise suppression. Costs ~70 MB. |
+| `OpenTok.Net.Transformers.Android` | [`com.vonage:client-sdk-video-transformers`](https://central.sonatype.com/artifact/com.vonage/client-sdk-video-transformers) plus `com.vonage:mltransformers-ps16k` | You want background blur, background replacement or audio noise suppression. Costs ~70 MB. |
 
 ```bash
 dotnet add package OpenTok.Net.Android

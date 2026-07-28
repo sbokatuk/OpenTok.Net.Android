@@ -29,6 +29,38 @@
   <Import Project="../OpenTok.Binding.props" />
 
   <!--
+    Two target frameworks, not three — and this is a size fix, not a preference.
+
+    nuget.org rejects a package over 250 MB with HTTP 413, and three copies of the payload came to
+    319 MB. The push failed exactly that way before this was here. Dropping net9 and the duplicate
+    audio .aar (below) brings it to ~160 MB.
+
+    net9 is the one to drop because it is the one nobody needs an exact match for. NuGet resolves
+    the best *compatible* asset folder, so a net9 app takes the net8 copy — verified, not assumed:
+    the device tests build against this package at net8, net9 and net10, and all three APKs carry
+    every .so and .tflite. That check is .github/workflows/build.yml's transformers-packaging job.
+
+    net8 and net10 are both kept because they are the ends of the range: net8 is the oldest
+    supported head and the fallback every other head resolves to, and net10 is the newest, where an
+    exact match avoids any question about forward compatibility. Keeping all three would be ~240 MB
+    — under the limit, but with 10 MB of headroom, which the next upstream model bump would spend.
+
+    Serving one head's assets to another is safe here in a way it would not be for the binding:
+    this package contains *no managed API at all* (see src/OpenTok.Transformers.md), so there is
+    nothing target-framework-specific in it. The payload is .so files and .tflite models, byte
+    identical in every copy.
+
+    Overriding TargetFrameworks after the import rather than by not setting it: OpenTok.Binding.props
+    sets the per-band lists every other project wants, and this is the one project that does not.
+    The bands still pair up one-to-one, so build/BuildNugets.sh and merge-packages.py need no
+    special case.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks Condition=" '$(OpenTokSdkBand)' == 'net9' ">net8.0-android34.0</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(OpenTokSdkBand)' == 'net10' ">net10.0-android36.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <!--
     The two ML libraries client-sdk-video-transformers' POM declares. Both are needed, and not only
     to satisfy Java dependency verification:
 
@@ -54,10 +86,55 @@
     <OpenTokMavenArtifact Include="com.vonage:mltransformers-ps16k"
                           Version="$(MlTransformersVersion)"
                           Packaging="aar" />
-    <OpenTokMavenArtifact Include="com.vonage:mltransformersaudionoisesuppression-ps16k"
-                          Version="$(MlTransformersNoiseSuppressionVersion)"
-                          Packaging="aar" />
   </ItemGroup>
+
+  <!--
+    mltransformersaudionoisesuppression-ps16k is declared by the POM but deliberately NOT shipped,
+    and it is worth being precise about why, because "the POM says so" is normally the end of the
+    argument.
+
+    Opened and compared, that .aar contains exactly two things: an empty classes.jar (22 bytes) and
+    jni/<abi>/libmltransformersaudionoisesuppression.so. No assets, no resources, no Java. And that
+    .so is already in client-sdk-video-transformers.aar at the same path, byte for byte — verified
+    by SHA-256 on the arm64-v8a copies, which match.
+
+    So it contributes 22.6 MB of duplicate to every copy of this package and nothing else. That was
+    tolerable when it was merely wasteful; it stopped being tolerable when the package hit
+    nuget.org's 250 MB ceiling.
+
+    Ignored rather than dropped silently: Java dependency verification reads the POM and would
+    otherwise fail this build with XA4241 naming an artifact that is, in substance, present.
+
+    mltransformers-ps16k IS still shipped whole, even though ~44 MB of it is the same kind of
+    duplicate, because unlike this one it also carries things nothing else has:
+    libs/libVonageSelfieSegmentation_android_lib.jar (the MediaPipe classes) and
+    assets/selfie_segmentation_gpu.binarypb, which is not in the main .aar under any path. Stripping
+    the .so out of it would mean unpacking and repacking an .aar at build time to save 44 MB the
+    package no longer needs to save — a real risk to background blur, which cannot be tested without
+    a device, for no benefit.
+  -->
+  <ItemGroup>
+    <AndroidIgnoredJavaDependency Include="com.vonage:mltransformersaudionoisesuppression-ps16k:$(MlTransformersNoiseSuppressionVersion)" />
+  </ItemGroup>
+
+  <!--
+    No project-level .aar. The .NET 10 Android SDK builds one for a library project and folds the
+    native payload of every Bind="false" @(AndroidLibrary) into it — which here means a second,
+    complete copy of the jni/ tree: 42 MB of .so files already present in the two .aar files packed
+    beside it, and nothing else (10 entries, all jni/). The .NET 9 band does not do this, which is
+    why the net10 half of the package was half again the size of the net8 half.
+
+    Harmless in an app — the packaging step takes one copy per path — but this package is nothing
+    *but* payload, so a duplicate of it is the single largest thing in the package, and it is the
+    difference between ~167 MB and 209 MB against a 250 MB ceiling.
+
+    Safe to turn off because there is nothing else for it to carry: no AndroidResource, no Assets,
+    no managed API (see src/OpenTok.Transformers.md). A consumer gets the payload from the two .aar
+    files the same way the net8 target framework — which never had a project .aar — already does.
+  -->
+  <PropertyGroup>
+    <AndroidGenerateLibraryAar>false</AndroidGenerateLibraryAar>
+  </PropertyGroup>
 
   <PropertyGroup>
     <AssemblyName>OpenTok.Net.Transformers.Android</AssemblyName>

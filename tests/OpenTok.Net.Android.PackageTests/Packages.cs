@@ -22,9 +22,39 @@ public static class Packages
     public const string Transformers = "OpenTok.Net.Transformers.Android";
 
     /// <summary>
+    /// The two target frameworks the transformers package ships, unlike every other package here,
+    /// which ships three.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three copies of its payload came to 319 MB, and nuget.org refuses anything over 250 MB — the
+    /// push failed with HTTP 413. net9 is the one dropped, because it is the one nothing needs an
+    /// exact match for: NuGet resolves the best <em>compatible</em> asset folder, so a net9 app
+    /// takes the net8 copy. net8 and net10 are the ends of the range and both stay.
+    /// </para>
+    /// <para>
+    /// Safe precisely because the package has no managed API. There is nothing target-framework
+    /// specific in it to get wrong — only .so files and .tflite models, byte identical in each copy.
+    /// Verified by building the device tests against it at all three of net8.0-android34.0,
+    /// net9.0-android35.0 and net10.0-android36.0 and inspecting the APKs, which is what the
+    /// transformers-packaging CI job repeats on every pull request.
+    /// </para>
+    /// </remarks>
+    public static readonly string[] TransformersTargetFrameworks =
+    [
+        "net8.0-android34.0", "net10.0-android36.0",
+    ];
+
+    /// <summary>The framework whose copy of the payload the content tests open. Any would do.</summary>
+    public const string TransformersTargetFramework = "net8.0-android34.0";
+
+    public static IEnumerable<object[]> TransformersFrameworks =>
+        TransformersTargetFrameworks.Select(tfm => new object[] { tfm });
+
+    /// <summary>
     /// A floor on the main transformers .aar, which is ~39 MB compressed (~74 MB on disk: three
     /// native libraries across three ABIs, plus three TensorFlow Lite models). The package carries
-    /// two more .aar files beside it — the ML libraries — for ~107 MB per target framework.
+    /// one more .aar beside it — mltransformers-ps16k — for ~84 MB in total.
     /// </summary>
     /// <remarks>
     /// Well below the real size on purpose. The only thing a floor can usefully answer is "did a

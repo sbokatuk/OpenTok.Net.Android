@@ -16,7 +16,7 @@
       packaging changes while the native artifact stays put.
     -->
     <OpenTokVersion>2.34.1</OpenTokVersion>
-    <OpenTokBindingRevision>3</OpenTokBindingRevision>
+    <OpenTokBindingRevision>4</OpenTokBindingRevision>
     <WebrtcVersion>121.1.101</WebrtcVersion>
     <WebrtcBindingRevision>1</WebrtcBindingRevision>
 
