@@ -92,4 +92,16 @@
     <PackageReference Include="OpenTok.Net.Android" Version="[$(OpenTokDevicePackageVersion)]" />
   </ItemGroup>
 
+  <!--
+    The transformers package, off by default and switched on with -p:OpenTokIncludeTransformers=true.
+    Opt-in rather than always: it adds ~70 MB to every build, and the checks in SmokeTests.cs do not
+    use it. What it is wanted for is the CI job that builds this app in Release and inspects the APK
+    for the transformers' .so files and .tflite models — a packaging property of the package that
+    neither the .nupkg tests nor the emulator run can reach. See
+    .github/workflows/build.yml's transformers-packaging job and src/OpenTok.Transformers.md.
+  -->
+  <ItemGroup Condition=" '$(OpenTokIncludeTransformers)' == 'true' ">
+    <PackageReference Include="OpenTok.Net.Transformers.Android" Version="[$(OpenTokDevicePackageVersion)]" />
+  </ItemGroup>
+
 </Project>

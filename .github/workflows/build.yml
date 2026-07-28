@@ -42,6 +42,15 @@ on:
         required: false
         default: true
         type: boolean
+      verify-release:
+        description: >
+          Whether to run the Release-configuration packaging check — the one that proves the
+          transformers package's native libraries survive r8 and reach the APK. Defaults to true,
+          so a pull request gets it; releases turn it off, because the tagged commit has already
+          been through it on its own PR.
+        required: false
+        default: true
+        type: boolean
 
 env:
   DOTNET_NOLOGO: 'true'
@@ -204,6 +213,139 @@ jobs:
             && dotnet build "${GITHUB_WORKSPACE}/samples/OpenTok.Sample.Android/OpenTok.Sample.Android.csproj" \
                  --configuration Release \
                  -p:OpenTokDevicePackageVersion="${OPENTOK_PACKAGE_VERSION}${s}" )
+
+  # Proves the transformers package's native payload survives a Release build and reaches the APK.
+  #
+  # Nothing else in this pipeline can. The package tests read the .nupkg and so only see what was
+  # packed; the emulator smoke tests build Debug and do not reference the package at all. What
+  # happens in between is the part that goes wrong: a Release build runs r8 and the Android
+  # packaging step, and a native library that fails to be picked out of an .aar — or is dropped
+  # because nothing appears to reference it, which is exactly the shape of a payload-only package —
+  # produces an APK that installs and then dies on the first transformer with
+  # UnsatisfiedLinkError.
+  #
+  # Release rather than Debug for the same reason the iOS side links for a device: Debug leaves the
+  # trimming and packaging paths that could drop it switched off.
+  #
+  # Both legs matter, and for different reasons. This package ships net8 and net10 asset folders
+  # but not net9 (a size limit — see the transformers .csproj), so:
+  #
+  #   net9   resolves the net8 folder by NuGet's normal fallback. The leg that proves an app
+  #          targeting a framework this package does not name still gets the whole payload.
+  #   net10  resolves its own folder, which the .NET 10 SDK builds differently — it is the band
+  #          that wanted to emit a duplicate project-level .aar, suppressed in the .csproj. The leg
+  #          that proves suppressing it did not take the payload with it.
+  transformers-packaging:
+    name: package the transformers into an APK (Release, ${{ matrix.target-framework }})
+    timeout-minutes: 45
+    needs: pack
+    if: ${{ inputs.verify-release }}
+    runs-on: ubuntu-latest
+    strategy:
+      # fail-fast off for the same reason as e2e: one leg failing and both legs failing point at
+      # very different causes — a resolution problem versus a packing problem.
+      fail-fast: false
+      matrix:
+        include:
+          - target-framework: net9.0-android35.0
+            dotnet-version: 9.0.x
+            sdk-major: '9'
+            android-platform: android-35
+          - target-framework: net10.0-android36.0
+            dotnet-version: 10.0.x
+            sdk-major: '10'
+            android-platform: android-36
+    steps:
+      - uses: actions/checkout@v4
+
+      # opentok-android-sdk's classes.jar is Java 17 class file format — see the sample job.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+
+      # Both legs build from a scratch directory carrying their own global.json, not just the net10
+      # one — the workload has to be installed on the same band the build resolves, and the SDK is
+      # resolved from the working directory. See the sample job for the failure this avoids: the
+      # repository root pins .NET 9, so a net10 build started there installs the workload on a band
+      # it never sees and then fails with NETSDK1147 naming the workload it just installed.
+      - name: Install the Android workload for the .NET ${{ matrix.sdk-major }} band
+        run: |
+          dir="${RUNNER_TEMP}/transformers-sdk"
+          mkdir -p "${dir}"
+          ( cd "${dir}" \
+            && dotnet new globaljson \
+                 --sdk-version "$(dotnet --list-sdks | grep '^${{ matrix.sdk-major }}\.' | tail -1 | cut -d' ' -f1)" --force \
+            && dotnet workload install android )
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;${{ matrix.android-platform }}'
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts
+
+      - name: Build the device tests with the transformers package and inspect the APK
+        run: |
+          . ./build/pins.sh
+          s="${{ inputs.suffix != '' && format('-{0}', inputs.suffix) || '' }}"
+          tfm=${{ matrix.target-framework }}
+          tests="${GITHUB_WORKSPACE}/tests/OpenTok.Net.Android.DeviceTests"
+
+          # -p:OpenTokDeviceTargetFramework rather than --framework: the project computes its
+          # TargetFrameworks from that property, and --framework only selects among the ones it
+          # already built, so asking for a framework outside the band's default list fails before
+          # it starts. From the scratch directory, for the reason the workload step gives.
+          ( cd "${RUNNER_TEMP}/transformers-sdk" \
+            && dotnet build "${tests}" \
+                 --configuration Release \
+                 -p:OpenTokDeviceTargetFramework="${tfm}" \
+                 -p:RuntimeIdentifier=android-arm64 \
+                 -p:OpenTokDevicePackageVersion="${OPENTOK_PACKAGE_VERSION}${s}" \
+                 -p:OpenTokIncludeTransformers=true )
+
+          apk="$(find "${tests}/bin/Release/${tfm}" -name '*-Signed.apk' -o -name '*.apk' | head -1)"
+          if [ -z "${apk}" ]; then
+            echo "::error::no APK was produced"
+            exit 1
+          fi
+          echo "inspecting ${apk}"
+
+          # arm64-v8a specifically: it is the only ABI a modern device actually runs, and the one
+          # whose 16 KB page alignment Android 15 requires. A build that packaged only the
+          # armeabi-v7a copies would look fine to a file count.
+          missing=0
+          for lib in libopentok_transformers.so libmltransformers.so libmltransformersaudionoisesuppression.so; do
+            if unzip -l "${apk}" | grep -q "lib/arm64-v8a/${lib}"; then
+              echo "  ok      ${lib}"
+            else
+              echo "::error::${lib} is missing from lib/arm64-v8a/ in the APK"
+              missing=1
+            fi
+          done
+
+          # The models are assets, not libraries, and travel by a different path — so they are a
+          # separate way for the same package to arrive useless.
+          for model in selfie_segmentation.tflite ns_model_1.tflite ns_model_2.tflite; do
+            if unzip -l "${apk}" | grep -q "${model}"; then
+              echo "  ok      ${model}"
+            else
+              echo "::error::${model} is missing from the APK's assets"
+              missing=1
+            fi
+          done
+
+          exit "${missing}"
 
   e2e:
     name: emulator smoke test (${{ matrix.target-framework }})

@@ -8,6 +8,61 @@ public static class Packages
     public const string OpenTok = "OpenTok.Net.Android";
     public const string Webrtc = "OpenTok.Net.webrtc.Dependency.Android";
 
+    /// <summary>
+    /// The media transformers package. Deliberately absent from <see cref="All"/>.
+    /// </summary>
+    /// <remarks>
+    /// It is not a binding: it carries native payload and .tflite models and has no managed API at
+    /// all (see src/OpenTok.Transformers.md), so every expectation in <see cref="All"/> — core
+    /// types, a public-type floor, an assembly size floor — is the wrong question to ask of it. It
+    /// gets its own checks in <c>TransformersPackageTests</c> instead, the same way the sibling
+    /// Net.Agora.iOS repository holds its payload-only extension packages to a different standard
+    /// than its real bindings.
+    /// </remarks>
+    public const string Transformers = "OpenTok.Net.Transformers.Android";
+
+    /// <summary>
+    /// The two target frameworks the transformers package ships, unlike every other package here,
+    /// which ships three.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three copies of its payload came to 319 MB, and nuget.org refuses anything over 250 MB — the
+    /// push failed with HTTP 413. net9 is the one dropped, because it is the one nothing needs an
+    /// exact match for: NuGet resolves the best <em>compatible</em> asset folder, so a net9 app
+    /// takes the net8 copy. net8 and net10 are the ends of the range and both stay.
+    /// </para>
+    /// <para>
+    /// Safe precisely because the package has no managed API. There is nothing target-framework
+    /// specific in it to get wrong — only .so files and .tflite models, byte identical in each copy.
+    /// Verified by building the device tests against it at all three of net8.0-android34.0,
+    /// net9.0-android35.0 and net10.0-android36.0 and inspecting the APKs, which is what the
+    /// transformers-packaging CI job repeats on every pull request.
+    /// </para>
+    /// </remarks>
+    public static readonly string[] TransformersTargetFrameworks =
+    [
+        "net8.0-android34.0", "net10.0-android36.0",
+    ];
+
+    /// <summary>The framework whose copy of the payload the content tests open. Any would do.</summary>
+    public const string TransformersTargetFramework = "net8.0-android34.0";
+
+    public static IEnumerable<object[]> TransformersFrameworks =>
+        TransformersTargetFrameworks.Select(tfm => new object[] { tfm });
+
+    /// <summary>
+    /// A floor on the main transformers .aar, which is ~39 MB compressed (~74 MB on disk: three
+    /// native libraries across three ABIs, plus three TensorFlow Lite models). The package carries
+    /// one more .aar beside it — mltransformers-ps16k — for ~84 MB in total.
+    /// </summary>
+    /// <remarks>
+    /// Well below the real size on purpose. The only thing a floor can usefully answer is "did a
+    /// placeholder get packed instead of the artifact", and pinning it close to the true size just
+    /// means re-editing this constant every time Vonage recompresses something.
+    /// </remarks>
+    public const long MinTransformersAarBytes = 20_000_000;
+
     /// <summary>The types a consumer of the OpenTok binding starts with.</summary>
     private static readonly string[] OpenTokCoreTypes =
     [
