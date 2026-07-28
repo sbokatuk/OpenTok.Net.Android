@@ -21,7 +21,11 @@ public sealed class AssemblyApi : IDisposable
         _metadata = _peReader.GetMetadataReader();
     }
 
-    /// <summary>Namespace-qualified names of every public top-level type.</summary>
+    /// <summary>
+    /// Namespace-qualified names of every public top-level type. Nested types are excluded — the
+    /// visibility filter below matches <see cref="TypeAttributes.Public"/> exactly, and a nested
+    /// type carries <see cref="TypeAttributes.NestedPublic"/> instead.
+    /// </summary>
     public IReadOnlyList<string> PublicTypes => _publicTypes ??= _metadata.TypeDefinitions
         .Select(_metadata.GetTypeDefinition)
         .Where(type => (type.Attributes & TypeAttributes.VisibilityMask) == TypeAttributes.Public)
@@ -61,9 +65,28 @@ public sealed class AssemblyApi : IDisposable
         throw new InvalidOperationException($"Type '{typeFullName}' is not defined in this assembly.");
     }
 
+    /// <summary>
+    /// The name callers use to ask for a type: <c>Namespace.Type</c>, and
+    /// <c>Namespace.Outer/Nested</c> for a nested one.
+    /// </summary>
+    /// <remarks>
+    /// A nested type's own <c>Namespace</c> row is empty in metadata — the namespace lives on the
+    /// enclosing type — so the name has to be assembled by walking outwards. Without that, every
+    /// nested type would come back as its bare name (<c>StreamReceivedEventArgs</c>), and the
+    /// generated listener event-args types, of which there are dozens sharing names across
+    /// <c>Session</c>, <c>PublisherKit</c> and <c>SubscriberKit</c>, would be indistinguishable.
+    /// <c>/</c> rather than <c>+</c> or <c>.</c>: it is the one separator that cannot occur in an
+    /// identifier, so the split is unambiguous, and it matches how ECMA-335 itself writes nesting.
+    /// </remarks>
     private string FullNameOf(TypeDefinition type)
     {
         var name = _metadata.GetString(type.Name);
+
+        if (type.IsNested)
+        {
+            return $"{FullNameOf(_metadata.GetTypeDefinition(type.GetDeclaringType()))}/{name}";
+        }
+
         var ns = _metadata.GetString(type.Namespace);
         return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
     }

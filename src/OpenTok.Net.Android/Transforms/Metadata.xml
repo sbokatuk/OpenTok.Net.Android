@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <metadata>
+
   <!--
+    ============================================================================================
+    Collision fixes — without these the binding does not compile.
+    ============================================================================================
+
     SubscriberKit implements two listener interfaces that each declare their own
     onDisconnected(SubscriberKit) overload: StreamListener (stream-level) and SubscriberListener
     (subscriber-level). class-parse's default managed name for both is "Disconnected", and its
@@ -16,4 +21,166 @@
   <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.StreamListener']/method[@name='onDisconnected' and count(parameter)=1 and parameter[1][@type='com.opentok.android.SubscriberKit']]" name="argsType">StreamListenerDisconnectedEventArgs</attr>
   <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.SubscriberListener']/method[@name='onDisconnected' and count(parameter)=1 and parameter[1][@type='com.opentok.android.SubscriberKit']]" name="managedName">SubscriberDisconnected</attr>
   <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.SubscriberListener']/method[@name='onDisconnected' and count(parameter)=1 and parameter[1][@type='com.opentok.android.SubscriberKit']]" name="argsType">SubscriberListenerDisconnectedEventArgs</attr>
+
+  <!--
+    ============================================================================================
+    Listener parameter names.
+    ============================================================================================
+
+    opentok-android-sdk's classes.jar is compiled without javac's -parameters flag, so the class
+    file carries no parameter names at all and class-parse falls back to positional placeholders:
+    p0, p1, p2. Those names are not merely cosmetic — for every listener interface the binding
+    also generates a C# event and an EventArgs class with one property per parameter, so the
+    fallback surfaces to consumers as
+
+        session.StreamReceived += (s, e) => Subscribe(e.P1);          // which one was the stream?
+
+    rather than
+
+        session.StreamReceived += (s, e) => Subscribe(e.Stream);
+
+    Renaming the parameter renames the generated EventArgs property with it, which is the whole
+    point: the event API is the ergonomic one (it needs no Java.Lang.Object subclass per
+    listener), and e.P0/e.P1 is what made it unusable in practice.
+
+    Names come from each callback's documented meaning in the OpenTok Android SDK reference, and
+    from the parameter's Java type where the reference is silent. The first parameter of every
+    callback here is the SDK object that raised it — which is also `sender` on the event, but is
+    kept as a named property anyway, since a consumer implementing the listener *interface*
+    rather than handling the event has no other way to reach it.
+
+    Scope is the listeners an app actually implements. The stats and transformer listeners are
+    left alone deliberately: their parameters are single stats objects whose type already says
+    what they are, so positional names cost nothing there.
+
+    Renaming a parameter renames a public EventArgs property, so this is a source-breaking change
+    for code already written against e.P0/e.P1. It rides with a binding-revision bump — see
+    Directory.Build.props.
+  -->
+
+  <!-- Session.SessionListener -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SessionListener']/method[@name='onConnected']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SessionListener']/method[@name='onDisconnected']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SessionListener']/method[@name='onError']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SessionListener']/method[@name='onError']/parameter[@name='p1']" name="name">error</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SessionListener']/method[@name='onStreamReceived']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SessionListener']/method[@name='onStreamReceived']/parameter[@name='p1']" name="name">stream</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SessionListener']/method[@name='onStreamDropped']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SessionListener']/method[@name='onStreamDropped']/parameter[@name='p1']" name="name">stream</attr>
+
+  <!-- Session.ConnectionListener — another client joined or left. -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ConnectionListener']/method[@name='onConnectionCreated']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ConnectionListener']/method[@name='onConnectionCreated']/parameter[@name='p1']" name="name">connection</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ConnectionListener']/method[@name='onConnectionDestroyed']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ConnectionListener']/method[@name='onConnectionDestroyed']/parameter[@name='p1']" name="name">connection</attr>
+
+  <!--
+    Session.SignalListener: onSignalReceived(Session, String type, String data, Connection). Two
+    adjacent String parameters is the case where p1/p2 is not just ugly but genuinely ambiguous.
+  -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SignalListener']/method[@name='onSignalReceived']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SignalListener']/method[@name='onSignalReceived']/parameter[@name='p1']" name="name">type</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SignalListener']/method[@name='onSignalReceived']/parameter[@name='p2']" name="name">data</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.SignalListener']/method[@name='onSignalReceived']/parameter[@name='p3']" name="name">connection</attr>
+
+  <!--
+    Session.ArchiveListener: onArchiveStarted(Session, String archiveId, String name). "name" is
+    avoided as a parameter name here — it becomes an EventArgs property, and Name on an event-args
+    type reads as the event's own name rather than the archive's.
+  -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ArchiveListener']/method[@name='onArchiveStarted']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ArchiveListener']/method[@name='onArchiveStarted']/parameter[@name='p1']" name="name">archiveId</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ArchiveListener']/method[@name='onArchiveStarted']/parameter[@name='p2']" name="name">archiveName</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ArchiveListener']/method[@name='onArchiveStopped']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ArchiveListener']/method[@name='onArchiveStopped']/parameter[@name='p1']" name="name">archiveId</attr>
+
+  <!-- Session.ReconnectionListener -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ReconnectionListener']/method[@name='onReconnecting']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.ReconnectionListener']/method[@name='onReconnected']/parameter[@name='p0']" name="name">session</attr>
+
+  <!-- Session.MuteListener — a moderator muted the session, or lifted the mute state. -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.MuteListener']/method[@name='onMuteForced']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.MuteListener']/method[@name='onMuteForced']/parameter[@name='p1']" name="name">muteForcedInfo</attr>
+
+  <!--
+    Session.StreamPropertiesListener — a remote stream's own properties changed. The trailing
+    boolean is the property's new value, which "p2" hides completely.
+  -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamHasAudioChanged']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamHasAudioChanged']/parameter[@name='p1']" name="name">stream</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamHasAudioChanged']/parameter[@name='p2']" name="name">hasAudio</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamHasVideoChanged']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamHasVideoChanged']/parameter[@name='p1']" name="name">stream</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamHasVideoChanged']/parameter[@name='p2']" name="name">hasVideo</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamVideoDimensionsChanged']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamVideoDimensionsChanged']/parameter[@name='p1']" name="name">stream</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamVideoDimensionsChanged']/parameter[@name='p2']" name="name">width</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamVideoDimensionsChanged']/parameter[@name='p3']" name="name">height</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamVideoTypeChanged']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamVideoTypeChanged']/parameter[@name='p1']" name="name">stream</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamPropertiesListener']/method[@name='onStreamVideoTypeChanged']/parameter[@name='p2']" name="name">videoType</attr>
+
+  <!-- Session.StreamCaptionsPropertiesListener -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamCaptionsPropertiesListener']/method[@name='onStreamHasCaptionsChanged']/parameter[@name='p0']" name="name">session</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamCaptionsPropertiesListener']/method[@name='onStreamHasCaptionsChanged']/parameter[@name='p1']" name="name">stream</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Session.StreamCaptionsPropertiesListener']/method[@name='onStreamHasCaptionsChanged']/parameter[@name='p2']" name="name">hasCaptions</attr>
+
+  <!-- PublisherKit.PublisherListener -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.PublisherListener']/method[@name='onStreamCreated']/parameter[@name='p0']" name="name">publisher</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.PublisherListener']/method[@name='onStreamCreated']/parameter[@name='p1']" name="name">stream</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.PublisherListener']/method[@name='onStreamDestroyed']/parameter[@name='p0']" name="name">publisher</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.PublisherListener']/method[@name='onStreamDestroyed']/parameter[@name='p1']" name="name">stream</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.PublisherListener']/method[@name='onError']/parameter[@name='p0']" name="name">publisher</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.PublisherListener']/method[@name='onError']/parameter[@name='p1']" name="name">error</attr>
+
+  <!--
+    PublisherKit.VideoListener. The second parameter is a *reason string* — one of PublisherKit's
+    own VIDEO_REASON_* constants, not a boolean and not an enum, which "p1" gives no hint of.
+  -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.VideoListener']/method[@name='onVideoDisabled']/parameter[@name='p0']" name="name">publisher</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.VideoListener']/method[@name='onVideoDisabled']/parameter[@name='p1']" name="name">reason</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.VideoListener']/method[@name='onVideoEnabled']/parameter[@name='p0']" name="name">publisher</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.VideoListener']/method[@name='onVideoEnabled']/parameter[@name='p1']" name="name">reason</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.VideoListener']/method[@name='onVideoDisableWarning']/parameter[@name='p0']" name="name">publisher</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.VideoListener']/method[@name='onVideoDisableWarningLifted']/parameter[@name='p0']" name="name">publisher</attr>
+
+  <!-- PublisherKit.AudioLevelListener / MuteListener -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.AudioLevelListener']/method[@name='onAudioLevelUpdated']/parameter[@name='p0']" name="name">publisher</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.AudioLevelListener']/method[@name='onAudioLevelUpdated']/parameter[@name='p1']" name="name">audioLevel</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='PublisherKit.MuteListener']/method[@name='onMuteForced']/parameter[@name='p0']" name="name">publisher</attr>
+
+  <!-- SubscriberKit.SubscriberListener -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.SubscriberListener']/method[@name='onConnected']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.SubscriberListener']/method[@name='onDisconnected']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.SubscriberListener']/method[@name='onError']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.SubscriberListener']/method[@name='onError']/parameter[@name='p1']" name="name">error</attr>
+
+  <!-- SubscriberKit.StreamListener -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.StreamListener']/method[@name='onReconnected']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.StreamListener']/method[@name='onDisconnected']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.StreamListener']/method[@name='onAudioEnabled']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.StreamListener']/method[@name='onAudioDisabled']/parameter[@name='p0']" name="name">subscriber</attr>
+
+  <!-- SubscriberKit.VideoListener — same reason-string note as the publisher's. -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.VideoListener']/method[@name='onVideoDataReceived']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.VideoListener']/method[@name='onVideoDisabled']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.VideoListener']/method[@name='onVideoDisabled']/parameter[@name='p1']" name="name">reason</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.VideoListener']/method[@name='onVideoEnabled']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.VideoListener']/method[@name='onVideoEnabled']/parameter[@name='p1']" name="name">reason</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.VideoListener']/method[@name='onVideoDisableWarning']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.VideoListener']/method[@name='onVideoDisableWarningLifted']/parameter[@name='p0']" name="name">subscriber</attr>
+
+  <!-- SubscriberKit.AudioLevelListener / CaptionsListener -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.AudioLevelListener']/method[@name='onAudioLevelUpdated']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.AudioLevelListener']/method[@name='onAudioLevelUpdated']/parameter[@name='p1']" name="name">audioLevel</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.CaptionsListener']/method[@name='onCaptionText']/parameter[@name='p0']" name="name">subscriber</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.CaptionsListener']/method[@name='onCaptionText']/parameter[@name='p1']" name="name">text</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.CaptionsListener']/method[@name='onCaptionText']/parameter[@name='p2']" name="name">isFinal</attr>
+
+  <!-- Publisher.CameraListener -->
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Publisher.CameraListener']/method[@name='onCameraChanged']/parameter[@name='p0']" name="name">publisher</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Publisher.CameraListener']/method[@name='onCameraChanged']/parameter[@name='p1']" name="name">cameraId</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Publisher.CameraListener']/method[@name='onCameraError']/parameter[@name='p0']" name="name">publisher</attr>
+  <attr path="/api/package[@name='com.opentok.android']/interface[@name='Publisher.CameraListener']/method[@name='onCameraError']/parameter[@name='p1']" name="name">error</attr>
+
 </metadata>

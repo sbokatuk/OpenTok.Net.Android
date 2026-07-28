@@ -64,8 +64,31 @@
       members are reachable exactly as C# already allows). BG8605/BG8606 (unresolved Java types)
       and BG8801 (invalid parameter type) are deliberately left visible — they mean something else
       was left out of the binding.
+
+      BG8A04 ("Metadata.xml element ... matched no nodes") is the one suppression here that hides a
+      warning which is normally worth reading, so it needs its own justification.
+
+      Every parameter rename in Transforms/Metadata.xml raises it — once per target framework, ~80
+      paths, 240 warnings a build — while demonstrably *working*: the renamed properties are
+      present in the produced assembly on all three target frameworks (verified against
+      net8.0-android34.0, net9.0-android35.0 and net10.0-android36.0). The generator applies the
+      transform and then reports the path as unmatched against the document it has already
+      rewritten, so the warning says nothing about whether the rename took.
+
+      Suppressing it does mean a genuinely wrong XPath no longer announces itself. Both classes of
+      transform in that file are covered another way, which is why this is acceptable rather than
+      merely convenient:
+
+        * the managedName/argsType collision fixes fail the *build* (CS0102/CS0111) if they stop
+          matching — that is the whole reason they exist;
+        * the parameter renames are asserted directly against the packed assembly by
+          BindingApiTests.Listener_event_args_carry_named_properties, which checks the property
+          names rather than the absence of a warning.
+
+      Leaving BG8A04 on would bury a real unmatched path among 240 spurious ones, which is a worse
+      guard than the test.
     -->
-    <NoWarn>$(NoWarn);CS1591;CS0108;CS0114;CS0618;BG8401;BG8400;BG8800;CS0628</NoWarn>
+    <NoWarn>$(NoWarn);CS1591;CS0108;CS0114;CS0618;BG8401;BG8400;BG8800;CS0628;BG8A04</NoWarn>
   </PropertyGroup>
 
   <Target Name="ValidateOpenTokSdkBand" BeforeTargets="Build;Pack" Condition=" '$(TargetFrameworks)' == '' ">

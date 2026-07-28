@@ -16,9 +16,23 @@
       packaging changes while the native artifact stays put.
     -->
     <OpenTokVersion>2.34.1</OpenTokVersion>
-    <OpenTokBindingRevision>1</OpenTokBindingRevision>
+    <OpenTokBindingRevision>2</OpenTokBindingRevision>
     <WebrtcVersion>121.1.101</WebrtcVersion>
     <WebrtcBindingRevision>1</WebrtcBindingRevision>
+
+    <!--
+      Two more versions opentok-android-sdk's POM declares, pinned here rather than written inline
+      in OpenTok.Net.Android.csproj's @(AndroidIgnoredJavaDependency) items.
+
+      They are *derived* pins, exactly like WebrtcVersion: their only correct value is whatever the
+      bound SDK asks for, because an ignored-dependency entry has to name the coordinate Java
+      dependency verification is complaining about, version and all. A stale entry here does not
+      fail the build — it silently stops matching, and XA4241 comes back on the next SDK bump
+      naming a version nobody wrote down. Being properties means build/upstream.tsv can watch them
+      the same way it watches webrtc, so the drift workflow reports the desync instead.
+    -->
+    <FloggerVersion>0.6</FloggerVersion>
+    <GuavaVersion>31.1-android</GuavaVersion>
     <!--
       The default for projects that do not pick their own line (tests, and the main binding
       itself); the webrtc dependency .csproj overrides this with its own pair.

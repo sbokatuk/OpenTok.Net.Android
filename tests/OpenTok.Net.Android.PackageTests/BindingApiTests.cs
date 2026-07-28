@@ -91,4 +91,55 @@ public class BindingApiTests
         Assert.Contains("add_StreamDisconnected", methods);
         Assert.Contains("add_SubscriberDisconnected", methods);
     }
+
+    [Theory]
+    [MemberData(nameof(Packages.Frameworks), MemberType = typeof(Packages))]
+    public void Listener_event_args_carry_named_properties(string tfm)
+    {
+        using var api = OpenBinding(Packages.OpenTok, tfm);
+
+        // opentok-android-sdk's classes.jar carries no parameter names, so class-parse's default
+        // for every listener callback is p0/p1/p2 — which becomes P0/P1/P2 on the generated
+        // EventArgs, the form a consumer actually reads. Transforms/Metadata.xml renames them.
+        //
+        // This is a regression guard with real teeth: a metadata path that stops matching (a
+        // renamed interface, a changed parameter count, a typo in the XPath) is silently ignored
+        // by the binding generator. The build still succeeds and the package still installs — the
+        // properties just quietly revert to P0/P1, which nothing else in this suite would notice.
+        Assert.Equal(
+            new[] { "Session", "Stream" },
+            api.PropertiesOf("Com.Opentok.Android.Session/StreamReceivedEventArgs"));
+
+        // Four parameters, two of them adjacent strings — the case where positional names are not
+        // just ugly but genuinely ambiguous at the call site.
+        Assert.Equal(
+            new[] { "Session", "Type", "Data", "Connection" },
+            api.PropertiesOf("Com.Opentok.Android.Session/SignalEventArgs"));
+
+        Assert.Equal(
+            new[] { "Publisher", "Stream" },
+            api.PropertiesOf("Com.Opentok.Android.PublisherKit/StreamCreatedEventArgs"));
+
+        Assert.Equal(
+            new[] { "Subscriber", "Error" },
+            api.PropertiesOf("Com.Opentok.Android.SubscriberKit/ErrorEventArgs"));
+    }
+
+    [Theory]
+    [MemberData(nameof(Packages.Frameworks), MemberType = typeof(Packages))]
+    public void Concrete_builders_return_their_own_type(string tfm)
+    {
+        using var api = OpenBinding(Packages.OpenTok, tfm);
+
+        // Java's covariant `Publisher build()` override is dropped by class-parse along with its
+        // synthetic bridge, leaving only the inherited PublisherKit-typed Build(). Additions/
+        // Builders.cs restores it. Without that, consumers need a JavaCast<Publisher>() — and a
+        // plain C# cast, the obvious thing to reach for, throws.
+        //
+        // Declared on the nested Builder itself, so finding Build here (rather than only on
+        // PublisherKit.Builder) is exactly the assertion: an Additions file dropped from the
+        // project would still build and pack, just without these.
+        Assert.Contains("Build", api.MethodsOf("Com.Opentok.Android.Publisher/Builder"));
+        Assert.Contains("Build", api.MethodsOf("Com.Opentok.Android.Subscriber/Builder"));
+    }
 }
