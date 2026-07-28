@@ -8,6 +8,31 @@ public static class Packages
     public const string OpenTok = "OpenTok.Net.Android";
     public const string Webrtc = "OpenTok.Net.webrtc.Dependency.Android";
 
+    /// <summary>
+    /// The media transformers package. Deliberately absent from <see cref="All"/>.
+    /// </summary>
+    /// <remarks>
+    /// It is not a binding: it carries native payload and .tflite models and has no managed API at
+    /// all (see src/OpenTok.Transformers.md), so every expectation in <see cref="All"/> — core
+    /// types, a public-type floor, an assembly size floor — is the wrong question to ask of it. It
+    /// gets its own checks in <c>TransformersPackageTests</c> instead, the same way the sibling
+    /// Net.Agora.iOS repository holds its payload-only extension packages to a different standard
+    /// than its real bindings.
+    /// </remarks>
+    public const string Transformers = "OpenTok.Net.Transformers.Android";
+
+    /// <summary>
+    /// A floor on the main transformers .aar, which is ~39 MB compressed (~74 MB on disk: three
+    /// native libraries across three ABIs, plus three TensorFlow Lite models). The package carries
+    /// two more .aar files beside it — the ML libraries — for ~107 MB per target framework.
+    /// </summary>
+    /// <remarks>
+    /// Well below the real size on purpose. The only thing a floor can usefully answer is "did a
+    /// placeholder get packed instead of the artifact", and pinning it close to the true size just
+    /// means re-editing this constant every time Vonage recompresses something.
+    /// </remarks>
+    public const long MinTransformersAarBytes = 20_000_000;
+
     /// <summary>The types a consumer of the OpenTok binding starts with.</summary>
     private static readonly string[] OpenTokCoreTypes =
     [

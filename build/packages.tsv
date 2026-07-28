@@ -8,6 +8,10 @@
 # the dependency package is OpenTok.Net.webrtc.Dependency.Android — so each row spells out its own
 # project directory name (identical to its PackageId) rather than a bare id BuildNugets.sh expands.
 #
+# The transformers row depends on nothing here, deliberately: it carries native payload only (see
+# src/OpenTok.Transformers.md), and a consumer adds it alongside OpenTok.Net.Android only if it
+# wants background blur, background replacement or noise suppression — which costs ~70 MB.
+#
 # Columns
 #   id       short label used only for build log messages
 #   project  directory under src/, and the resulting PackageId (project dir == project file basename)
@@ -16,3 +20,4 @@
 # id	project	deps
 webrtc	OpenTok.Net.webrtc.Dependency.Android	-
 opentok	OpenTok.Net.Android	webrtc
+transformers	OpenTok.Net.Transformers.Android	-

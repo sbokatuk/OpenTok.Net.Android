@@ -15,6 +15,7 @@ Two packages, from `net8.0-android` through `net10.0-android`:
 | --- | --- | --- |
 | `OpenTok.Net.Android` | [`com.opentok.android:opentok-android-sdk`](https://central.sonatype.com/artifact/com.opentok.android/opentok-android-sdk) | Always — `Session`, `Publisher`, `Subscriber` and the rest of OpenTok's own API. |
 | `OpenTok.Net.webrtc.Dependency.Android` | [`com.vonage:webrtc`](https://central.sonatype.com/artifact/com.vonage/webrtc) | Never referenced directly — a NuGet dependency of the package above, carrying the WebRTC engine OpenTok is built on. |
+| `OpenTok.Net.Transformers.Android` | [`com.vonage:client-sdk-video-transformers`](https://central.sonatype.com/artifact/com.vonage/client-sdk-video-transformers) and the two ML libraries it declares | You want background blur, background replacement or audio noise suppression. Costs ~70 MB. |
 
 ```bash
 dotnet add package OpenTok.Net.Android
@@ -24,6 +25,14 @@ dotnet add package OpenTok.Net.Android
 It exists because `com.vonage:webrtc`'s `.aar` is 243 MB (four ABIs' worth of the native WebRTC
 engine) — carrying it as a separate package keeps `OpenTok.Net.Android` itself a normal-sized
 package with a NuGet dependency on this one, instead of ~250 MB every time either changes.
+
+`OpenTok.Net.Transformers.Android` does **not** come along, and does not depend on the binding
+either — add it yourself if you want it. It carries native payload and no managed API: the classes
+that use it (`PublisherKit.VideoTransformer`, `SetVideoTransformers` and friends) are in
+`OpenTok.Net.Android`, and the SDK loads the native transformers when one is constructed. Without
+it that construction compiles, links, and then returns null at runtime with
+`MediaTransformerOpenTokTransformersLibraryNotLoaded`. See
+[`src/OpenTok.Transformers.md`](src/OpenTok.Transformers.md).
 
 ```csharp
 using Com.Opentok.Android;

@@ -16,7 +16,7 @@
       packaging changes while the native artifact stays put.
     -->
     <OpenTokVersion>2.34.1</OpenTokVersion>
-    <OpenTokBindingRevision>2</OpenTokBindingRevision>
+    <OpenTokBindingRevision>3</OpenTokBindingRevision>
     <WebrtcVersion>121.1.101</WebrtcVersion>
     <WebrtcBindingRevision>1</WebrtcBindingRevision>
 
@@ -33,6 +33,21 @@
     -->
     <FloggerVersion>0.6</FloggerVersion>
     <GuavaVersion>31.1-android</GuavaVersion>
+
+    <!--
+      The media transformers, which ship as their own artifact line rather than inside the SDK —
+      see src/OpenTok.Transformers.md. com.vonage:client-sdk-video-transformers rides OpenTok's own
+      version (2.34.1 today), so it needs no pin of its own; the two ML libraries it declares do,
+      and they are derived the same way WebrtcVersion is: their only correct value is whatever that
+      artifact's POM asks for, and the upstream-drift workflow watches them.
+
+      The "-ps16k" suffix on both is the 16 KB page-size build. Android 15 requires 16 KB alignment
+      on 64-bit devices, and Vonage publishes each ML library twice — plain and ps16k — with only
+      the ps16k pair declared by client-sdk-video-transformers' POM. Do not "simplify" these to the
+      unsuffixed artifacts.
+    -->
+    <MlTransformersVersion>4.1.60</MlTransformersVersion>
+    <MlTransformersNoiseSuppressionVersion>1.1.11</MlTransformersNoiseSuppressionVersion>
     <!--
       The default for projects that do not pick their own line (tests, and the main binding
       itself); the webrtc dependency .csproj overrides this with its own pair.

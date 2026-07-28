@@ -24,6 +24,9 @@ jobs:
       # been through it on its pull request. Building it again here would put a MAUI workload
       # install between the packages being built and being published, for a result already known.
       build-sample: false
+      # Same reasoning: the Release packaging check is a correctness check on the commit, which its
+      # own pull request already ran.
+      verify-release: false
 
   publish:
     name: publish to nuget.org and create release

@@ -33,3 +33,17 @@ OpenTok Android	Vonage OpenTok (Video API) Android SDK	maven	OpenTokVersion	com.
 OpenTok Android	Vonage webrtc (declared by the bound SDK)	maven-pom-dep	WebrtcVersion	com.opentok.android:opentok-android-sdk OpenTokVersion com.vonage:webrtc	-
 OpenTok Android	Flogger (declared by the bound SDK)	maven-pom-dep	FloggerVersion	com.opentok.android:opentok-android-sdk OpenTokVersion com.google.flogger:flogger	-
 OpenTok Android	Guava (declared by the bound SDK)	maven-pom-dep	GuavaVersion	com.opentok.android:opentok-android-sdk OpenTokVersion com.google.guava:guava	-
+
+# The media transformers, in their own reporting group so a transformers-only bump does not reopen
+# the SDK issue and vice versa. client-sdk-video-transformers rides OpenTok's own version line, so
+# it has no pin of its own to watch — it is watched here as a *download*, which is the one thing
+# that can go wrong independently: Vonage has published an SDK version without a matching
+# transformers build before, and the first sign of it is build/BuildNugets.sh failing to resolve
+# the artifact.
+#
+# The two ML libraries are derived pins, like webrtc: their only correct value is whatever
+# client-sdk-video-transformers' POM declares. Note the "-ps16k" artifact ids — that is the 16 KB
+# page-size build Android 15 needs, and the POM declares those rather than the unsuffixed pair.
+OpenTok Transformers	Vonage media transformers	maven	OpenTokVersion	com.vonage:client-sdk-video-transformers:aar	-
+OpenTok Transformers	ML transformers (declared by the transformers artifact)	maven-pom-dep	MlTransformersVersion	com.vonage:client-sdk-video-transformers OpenTokVersion com.vonage:mltransformers-ps16k	-
+OpenTok Transformers	ML noise suppression (declared by the transformers artifact)	maven-pom-dep	MlTransformersNoiseSuppressionVersion	com.vonage:client-sdk-video-transformers OpenTokVersion com.vonage:mltransformersaudionoisesuppression-ps16k	-

@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Native payload only, no managed API of its own. See src/OpenTok.Transformers.md.
+
+    The classes that use this are already in OpenTok.Net.Android — PublisherKit.VideoTransformer,
+    PublisherKit.AudioTransformer, SetVideoTransformers, SetAudioTransformers — and the SDK loads
+    the native transformers when one is constructed. Without this package that construction returns
+    null and raises 0x0A000006 (MediaTransformerOpenTokTransformersLibraryNotLoaded), at runtime,
+    after compiling and linking cleanly.
+  -->
+
+  <PropertyGroup>
+    <OpenTokGroupId>com.vonage</OpenTokGroupId>
+    <OpenTokArtifact>client-sdk-video-transformers</OpenTokArtifact>
+    <!--
+      Rides OpenTok's own version line: Vonage publishes this artifact at the same version as the
+      SDK it belongs to, so it needs no pin of its own and the repository default applies.
+    -->
+    <OpenTokNativeVersion>$(OpenTokVersion)</OpenTokNativeVersion>
+    <!--
+      Bind="false" for the main artifact: its classes.jar is empty (22 bytes — verified against the
+      published .aar), so there is no Java surface to project. Everything it carries is native
+      payload and .tflite assets.
+    -->
+    <OpenTokBindArtifact>false</OpenTokBindArtifact>
+  </PropertyGroup>
+
+  <Import Project="../OpenTok.Binding.props" />
+
+  <!--
+    The two ML libraries client-sdk-video-transformers' POM declares. Both are needed, and not only
+    to satisfy Java dependency verification:
+
+      * mltransformers-ps16k carries libs/libVonageSelfieSegmentation_android_lib.jar — 159
+        MediaPipe classes (com.google.mediapipe.components/framework/glutil) plus
+        com.vonage.mltransformers.NativeLib, the loader. The background transformers call into
+        those from native code through JNI, so a package shipping only the main .aar links and then
+        fails at runtime with NoClassDefFoundError rather than a missing-library error.
+      * mltransformersaudionoisesuppression-ps16k is native-only (its own classes.jar is empty),
+        and is here because the POM declares it and verification would otherwise fail.
+
+    Bind="false" on both: nothing in OpenTok's public API hands back a MediaPipe type, so these need
+    to be on the classpath, not projected into C#. Binding MediaPipe would also mean maintaining a
+    metadata file for a surface no consumer of this package calls.
+
+    The main .aar already contains every .so these two carry, byte-for-byte identical, because
+    Vonage builds it that way. The duplicate is harmless — the packaging step takes one copy per
+    path — and this mirrors exactly what a Gradle consumer of
+    `implementation 'com.vonage:client-sdk-video-transformers'` ends up with, which is the
+    configuration Vonage actually tests.
+  -->
+  <ItemGroup>
+    <OpenTokMavenArtifact Include="com.vonage:mltransformers-ps16k"
+                          Version="$(MlTransformersVersion)"
+                          Packaging="aar" />
+    <OpenTokMavenArtifact Include="com.vonage:mltransformersaudionoisesuppression-ps16k"
+                          Version="$(MlTransformersNoiseSuppressionVersion)"
+                          Packaging="aar" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <AssemblyName>OpenTok.Net.Transformers.Android</AssemblyName>
+    <PackageId>OpenTok.Net.Transformers.Android</PackageId>
+    <Title>The Vonage Video media transformers for .NET for Android.</Title>
+    <Description>The native payload for Vonage's OpenTok media transformers (com.vonage:client-sdk-video-transformers $(OpenTokVersion) and the ML libraries it declares), packaged for .NET for Android. Enables background blur, background replacement and audio noise suppression. Add it alongside OpenTok.Net.Android — it carries no managed API of its own; the classes that turn it on, PublisherKit.VideoTransformer and PublisherKit.AudioTransformer, are in that package. Without this one they return null and raise MediaTransformerOpenTokTransformersLibraryNotLoaded at runtime.</Description>
+    <PackageTags>$(PackageTags);transformers;background;blur;noise;suppression</PackageTags>
+  </PropertyGroup>
+
+</Project>
