@@ -1,4 +1,3 @@
-using Android.Runtime;
 using Com.Opentok.Android;
 
 namespace OpenTok.Net.Android.DeviceTests;
@@ -114,11 +113,12 @@ public static class SmokeTests
     /// </summary>
     private static void CreatesThePublisher()
     {
-        // PublisherKit.Builder.Build() is what Publisher.Builder inherits — Java's own covariant
-        // return (the runtime object is a Publisher) does not reach the C# static type, so this
-        // needs an explicit cast back to the concrete type. See PublisherKit.Builder.Build().
-        var built = new Publisher.Builder(Context).Build();
-        _publisher = built.JavaCast<Publisher>();
+        // Build() returns a Publisher rather than the inherited PublisherKit — restored in the
+        // binding's own Additions/Builders.cs, because Java's covariant return does not survive
+        // class-parse. That this line compiles without a JavaCast<Publisher>() is part of what the
+        // check covers: the addition is a plain source file, and a package built without it would
+        // still install and still reach the assertion below through a hand-written cast.
+        _publisher = new Publisher.Builder(Context).Build();
 
         Assert(_publisher is not null, "Publisher.Builder.Build() returned null.");
         Report("publisher created — camera/microphone pipeline and native libraries loaded");

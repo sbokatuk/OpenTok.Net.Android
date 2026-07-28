@@ -58,9 +58,9 @@
   -->
   <ItemGroup>
     <AndroidIgnoredJavaDependency Include="com.vonage:webrtc:$(WebrtcVersion)" />
-    <AndroidIgnoredJavaDependency Include="com.google.flogger:flogger:0.6" />
-    <AndroidIgnoredJavaDependency Include="com.google.flogger:flogger-system-backend:0.6" />
-    <AndroidIgnoredJavaDependency Include="com.google.guava:guava:31.1-android" />
+    <AndroidIgnoredJavaDependency Include="com.google.flogger:flogger:$(FloggerVersion)" />
+    <AndroidIgnoredJavaDependency Include="com.google.flogger:flogger-system-backend:$(FloggerVersion)" />
+    <AndroidIgnoredJavaDependency Include="com.google.guava:guava:$(GuavaVersion)" />
   </ItemGroup>
 
   <!--

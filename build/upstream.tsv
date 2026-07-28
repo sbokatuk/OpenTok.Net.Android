@@ -14,14 +14,22 @@
 # Only the Video SDK drives drift here. Its release notes are the reference for what changed:
 # https://developer.vonage.com/en/video/client-sdk/android/release-notes
 #
-# WebrtcVersion is *derived*, not independently upgradable: it has to equal whatever
-# opentok-android-sdk was built against, which its POM declares. Central carrying a higher
-# com.vonage:webrtc is not an upgrade path - adopting it would desync the
+# WebrtcVersion, FloggerVersion and GuavaVersion are all *derived*, not independently upgradable:
+# each has to equal whatever opentok-android-sdk was built against, which its POM declares. Central
+# carrying a higher com.vonage:webrtc is not an upgrade path - adopting it would desync the
 # AndroidIgnoredJavaDependency in OpenTok.Net.Android.csproj from what the SDK actually pulls. So
-# the webrtc row asks "does the pin match the bound SDK?" rather than "is there a newer one?",
-# which is silent today (2.34.1 declares 121.1.101, which is what is pinned) and speaks up exactly
-# when an OpenTok bump moves webrtc and this pin is left behind.
+# these rows ask "does the pin match the bound SDK?" rather than "is there a newer one?", which is
+# silent today (2.34.1 declares 121.1.101, 0.6 and 31.1-android, which is what is pinned) and speaks
+# up exactly when an OpenTok bump moves one of them and the pin is left behind.
+#
+# The flogger/guava rows exist because their failure mode is quiet. An ignored-dependency entry
+# names a coordinate *including its version*; when the version stops matching, the entry simply
+# stops applying, and the build fails with an XA4241 naming a version that appears nowhere in this
+# repository. Watching them turns that into an issue filed against the bump that caused it.
+# flogger and flogger-system-backend share one version in the POM, so one pin covers both.
 #
 # group	label	kind	pin	locator	confirm
 OpenTok Android	Vonage OpenTok (Video API) Android SDK	maven	OpenTokVersion	com.opentok.android:opentok-android-sdk:aar	-
 OpenTok Android	Vonage webrtc (declared by the bound SDK)	maven-pom-dep	WebrtcVersion	com.opentok.android:opentok-android-sdk OpenTokVersion com.vonage:webrtc	-
+OpenTok Android	Flogger (declared by the bound SDK)	maven-pom-dep	FloggerVersion	com.opentok.android:opentok-android-sdk OpenTokVersion com.google.flogger:flogger	-
+OpenTok Android	Guava (declared by the bound SDK)	maven-pom-dep	GuavaVersion	com.opentok.android:opentok-android-sdk OpenTokVersion com.google.guava:guava	-

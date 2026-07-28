@@ -28,13 +28,14 @@ package with a NuGet dependency on this one, instead of ~250 MB every time eithe
 ```csharp
 using Com.Opentok.Android;
 
-var publisher = new Publisher.Builder(context).Build().JavaCast<Publisher>();
+var publisher = new Publisher.Builder(context).Name("me").Build();
 publisher.PublishAudio = true;
 publisher.PublishVideo = true;
 // publisher.View is a ready-made Android.Views.View — attach it into your layout to show the
 // local camera preview. See samples/OpenTok.Sample.Android for a full MAUI example.
 
 var session = new Session.Builder(context, apiKey, sessionId).Build();
+session.StreamReceived += (s, e) => session.Subscribe(new Subscriber.Builder(context, e.Stream).Build());
 session.Connect(token);
 ```
 
@@ -42,6 +43,21 @@ These are raw platform bindings — the full `class-parse`-generated surface, `C
 and friends, namespaced exactly as the Java package (`com.opentok.android` →
 `Com.Opentok.Android`, no rename). See [tokbox.com/developer/sdks/android](https://tokbox.com/developer/sdks/android/)
 for the SDK's own API reference.
+
+Two things in that snippet are this package's doing rather than `class-parse`'s, and both exist
+because the generator loses information the Java API has:
+
+- **`Build()` returns `Publisher`**, and the chain stays on `Publisher.Builder`. Java's covariant
+  `build()` override and every fluent setter on `Publisher.Builder` are dropped along with their
+  synthetic bridge methods, leaving only the inherited `PublisherKit`-typed versions — so this
+  otherwise reads `new Publisher.Builder(context).Build().JavaCast<Publisher>()`, and the plain
+  `(Publisher)` cast an author reaches for first *throws*. See `src/OpenTok.Net.Android/Additions/`.
+- **`e.Stream`, not `e.P1`.** The `.aar` is compiled without `javac -parameters`, so every generated
+  `EventArgs` would otherwise expose `P0`/`P1`/`P2`. See `Transforms/Metadata.xml`.
+
+If you want one API across both platforms instead of the raw binding, see
+[`sbokatuk/OpenTok.Net`](https://github.com/sbokatuk/OpenTok.Net) — a cross-platform
+`Session`/`Publisher`/`Subscriber` and a MAUI video view over this package and its iOS counterpart.
 
 ---
 
@@ -178,12 +194,20 @@ API key) against the `nuget.org` environment.
 ## Sample
 
 `samples/OpenTok.Sample.Android` is a MAUI app built straight against the packages — no
-cross-platform façade — that creates a local `Publisher` and shows its camera preview: an App-ID-free
-demo (a `Publisher` captures and renders locally on its own; connecting a `Session` is what actually
-publishes it), camera/microphone permission handling, and a small custom MAUI handler hosting
-whatever native view OpenTok hands back (see its `OpenTokVideoView.cs` for why a container rather
-than a wrapped `SurfaceView` — unlike Agora's SDK, OpenTok hands a ready-made `View` *out* of
-`Publisher`/`Subscriber` rather than wanting one supplied in).
+cross-platform façade — that connects to a session, publishes this device's camera and microphone,
+and subscribes to the first remote stream: API key / session id / token entry, Connect / Disconnect
+/ Publish, local and remote video, and a status log. It is deliberately the same flow and the same
+layout as `samples/OpenTok.Sample.iOS` in the iOS binding repository, so the two can be read side by
+side and the only differences are the ones the SDKs actually force.
+
+Running it needs a Vonage Video API key, session id and token. Everything up to Connect works
+without them.
+
+It also carries a small custom MAUI handler hosting whatever native view OpenTok hands back (see its
+`OpenTokVideoView.cs` for why a container rather than a wrapped `SurfaceView` — unlike Agora's SDK,
+OpenTok hands a ready-made `View` *out* of `Publisher`/`Subscriber` rather than wanting one supplied
+in). That handler is exactly what [`OpenTok.Net.Maui`](https://github.com/sbokatuk/OpenTok.Net)
+packages, if you would rather not write it.
 
 It consumes the packed `OpenTok.Net.Android` package from `./artifacts` (see `NuGet.config`), so
 pack first. It targets `net10.0-android36.0` and needs the **.NET 10 SDK** with the `maui-android`
