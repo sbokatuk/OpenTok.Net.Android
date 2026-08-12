@@ -32,7 +32,7 @@
 
     Includes $(VersionSuffix) when set: build/BuildNugets.sh's "suffix" option packs both packages
     with the same -p:VersionSuffix, so OpenTok.Net.webrtc.Dependency.Android itself lands in
-    local-artifacts as e.g. 121.1.101.1-beta.1.1. A bare "121.1.101.1" reference is a stable-minimum
+    local-artifacts as e.g. 145.0.113.1-beta.1.1. A bare "145.0.113.1" reference is a stable-minimum
     range to NuGet and does not match that prerelease, which restore then reports as NU1102
     (confirmed by a PR build failing exactly this way with no matching version in either nuget.org
     or local-artifacts).

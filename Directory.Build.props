@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!--
-      Package version is <native SDK version>.<binding revision>, e.g. 2.34.1.1 — the same scheme
+      Package version is <native SDK version>.<binding revision>, e.g. 2.35.0.1 — the same scheme
       the sibling Net.Agora.Android repository uses for its own packages.
 
       OpenTok.Net.Android binds com.opentok.android:opentok-android-sdk. That artifact's own POM
@@ -15,9 +15,9 @@
       The fourth component belongs to this repository and increments whenever the binding or
       packaging changes while the native artifact stays put.
     -->
-    <OpenTokVersion>2.34.1</OpenTokVersion>
-    <OpenTokBindingRevision>4</OpenTokBindingRevision>
-    <WebrtcVersion>121.1.101</WebrtcVersion>
+    <OpenTokVersion>2.35.0</OpenTokVersion>
+    <OpenTokBindingRevision>1</OpenTokBindingRevision>
+    <WebrtcVersion>145.0.113</WebrtcVersion>
     <WebrtcBindingRevision>1</WebrtcBindingRevision>
 
     <!--
@@ -37,7 +37,7 @@
     <!--
       The media transformers, which ship as their own artifact line rather than inside the SDK —
       see src/OpenTok.Transformers.md. com.vonage:client-sdk-video-transformers rides OpenTok's own
-      version (2.34.1 today), so it needs no pin of its own; the two ML libraries it declares do,
+      version (2.35.0 today), so it needs no pin of its own; the two ML libraries it declares do,
       and they are derived the same way WebrtcVersion is: their only correct value is whatever that
       artifact's POM asks for, and the upstream-drift workflow watches them.
 
@@ -46,8 +46,8 @@
       the ps16k pair declared by client-sdk-video-transformers' POM. Do not "simplify" these to the
       unsuffixed artifacts.
     -->
-    <MlTransformersVersion>4.1.60</MlTransformersVersion>
-    <MlTransformersNoiseSuppressionVersion>1.1.11</MlTransformersNoiseSuppressionVersion>
+    <MlTransformersVersion>4.1.65</MlTransformersVersion>
+    <MlTransformersNoiseSuppressionVersion>1.1.33</MlTransformersNoiseSuppressionVersion>
     <!--
       The default for projects that do not pick their own line (tests, and the main binding
       itself); the webrtc dependency .csproj overrides this with its own pair.
