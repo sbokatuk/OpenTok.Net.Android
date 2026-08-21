@@ -23,6 +23,19 @@
   <attr path="/api/package[@name='com.opentok.android']/interface[@name='SubscriberKit.SubscriberListener']/method[@name='onDisconnected' and count(parameter)=1 and parameter[1][@type='com.opentok.android.SubscriberKit']]" name="argsType">SubscriberListenerDisconnectedEventArgs</attr>
 
   <!--
+    SubscriberKit.error(SubscriberKit, int, String) became public in opentok-android-sdk 2.35.0 —
+    it is the SDK's own error-dispatch plumbing, and 2.34.1 kept it package-private. class-parse
+    binds it as a method named Error, and the generator then drops the Error *event* (from
+    SubscriberListener.onError) rather than emit two members with one name. That happens without a
+    warning, and the package still builds, so the only symptom is a consumer's
+    `subscriber.Error += ...` failing with CS1656 — which is how it was found. Renamed rather than
+    removed, in keeping with the rest of this file, and named for what it is: the method stays
+    reachable for anyone who was somehow calling it, and the event gets its name back.
+    BindingApiTests.Error_events_survive_the_sdks_own_error_methods pins this.
+  -->
+  <attr path="/api/package[@name='com.opentok.android']/class[@name='SubscriberKit']/method[@name='error' and count(parameter)=3 and parameter[1][@type='com.opentok.android.SubscriberKit']]" name="managedName">ErrorInternal</attr>
+
+  <!--
     ============================================================================================
     Listener parameter names.
     ============================================================================================

@@ -94,6 +94,27 @@ public class BindingApiTests
 
     [Theory]
     [MemberData(nameof(Packages.Frameworks), MemberType = typeof(Packages))]
+    public void Error_events_survive_the_sdks_own_error_methods(string tfm)
+    {
+        using var api = OpenBinding(Packages.OpenTok, tfm);
+
+        // opentok-android-sdk 2.35.0 made SubscriberKit.error(SubscriberKit, int, String) public.
+        // Bound as-is it is a method named Error, and the generator then silently drops the Error
+        // event (from SubscriberListener.onError) rather than declare two members with one name —
+        // no warning, and the package builds. Transforms/Metadata.xml renames the method away;
+        // this checks all three kits still raise Error, so a future SDK doing the same to Session
+        // or PublisherKit is caught here rather than by a consumer's `x.Error +=` failing.
+        foreach (var kit in new[] { "Session", "PublisherKit", "SubscriberKit" })
+        {
+            var methods = api.MethodsOf($"Com.Opentok.Android.{kit}");
+
+            Assert.Contains("add_Error", methods);
+            Assert.Contains("remove_Error", methods);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Packages.Frameworks), MemberType = typeof(Packages))]
     public void Listener_event_args_carry_named_properties(string tfm)
     {
         using var api = OpenBinding(Packages.OpenTok, tfm);
