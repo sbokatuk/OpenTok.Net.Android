@@ -25,9 +25,9 @@
   <!--
     SubscriberKit.error(SubscriberKit, int, String) became public in opentok-android-sdk 2.35.0 —
     it is the SDK's own error-dispatch plumbing, and 2.34.1 kept it package-private. class-parse
-    binds it as a method named Error, and the generator then drops the Error *event* (from
-    SubscriberListener.onError) rather than emit two members with one name. That happens without a
-    warning, and the package still builds, so the only symptom is a consumer's
+    binds it as a method named Error, and the generator then renames the Error *event* (from
+    SubscriberListener.onError) to ErrorEvent rather than emit two members with one name. That
+    happens without a warning, and the package still builds, so the only symptom is a consumer's
     `subscriber.Error += ...` failing with CS1656 — which is how it was found. Renamed rather than
     removed, in keeping with the rest of this file, and named for what it is: the method stays
     reachable for anyone who was somehow calling it, and the event gets its name back.

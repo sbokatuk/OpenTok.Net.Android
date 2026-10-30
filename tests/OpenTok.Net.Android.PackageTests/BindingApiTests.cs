@@ -99,11 +99,11 @@ public class BindingApiTests
         using var api = OpenBinding(Packages.OpenTok, tfm);
 
         // opentok-android-sdk 2.35.0 made SubscriberKit.error(SubscriberKit, int, String) public.
-        // Bound as-is it is a method named Error, and the generator then silently drops the Error
-        // event (from SubscriberListener.onError) rather than declare two members with one name —
-        // no warning, and the package builds. Transforms/Metadata.xml renames the method away;
-        // this checks all three kits still raise Error, so a future SDK doing the same to Session
-        // or PublisherKit is caught here rather than by a consumer's `x.Error +=` failing.
+        // Bound as-is it is a method named Error, and the generator then silently renames the Error
+        // event (from SubscriberListener.onError) to ErrorEvent rather than declare two members
+        // with one name — no warning, and the package builds. Transforms/Metadata.xml renames the
+        // method away; this checks all three kits still raise Error, so a future SDK doing the same
+        // to Session or PublisherKit is caught here rather than by a consumer's `x.Error +=` failing.
         foreach (var kit in new[] { "Session", "PublisherKit", "SubscriberKit" })
         {
             var methods = api.MethodsOf($"Com.Opentok.Android.{kit}");
