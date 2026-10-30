@@ -2,7 +2,7 @@
 
 [![NuGet](https://img.shields.io/nuget/v/OpenTok.Net.Android?label=nuget)](https://www.nuget.org/packages/OpenTok.Net.Android)
 [![Targets: net8.0 | net9.0 | net10.0](https://img.shields.io/badge/targets-net8.0%20%7C%20net9.0%20%7C%20net10.0-512BD4)](#packages)
-[![opentok-android-sdk 2.35.0](https://img.shields.io/badge/opentok--android--sdk-2.35.0-099DFD)](https://central.sonatype.com/artifact/com.opentok.android/opentok-android-sdk)
+[![opentok-android-sdk 2.35.1](https://img.shields.io/badge/opentok--android--sdk-2.35.1-099DFD)](https://central.sonatype.com/artifact/com.opentok.android/opentok-android-sdk)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-green.svg)](LICENSE)
 
 .NET for Android and .NET MAUI bindings for the Vonage OpenTok (Video API) Android SDK.
@@ -185,7 +185,7 @@ Run the emulator suite locally, with an emulator already booted:
 
 ```sh
 ./build/BuildNugets.sh
-OPENTOK_DEVICE_RID=android-arm64 ./.github/scripts/run-emulator-tests.sh 2.35.0.1 net9.0-android35.0
+OPENTOK_DEVICE_RID=android-arm64 ./.github/scripts/run-emulator-tests.sh 2.35.1.1 net9.0-android35.0
 ```
 
 ## CI
